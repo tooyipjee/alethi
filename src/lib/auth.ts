@@ -15,16 +15,40 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-const TEST_USER = {
-  id: 'test-user-1',
-  email: 'test@pan.local',
-  name: 'Test User',
-  image: undefined,
-  daemonName: 'Pan',
-  daemonPersonality: 'supportive',
-  privacyLevel: 'balanced',
-  preferredProvider: 'ollama',
+const TEST_USERS: Record<string, {
+  id: string;
+  email: string;
+  name: string;
+  image: undefined;
+  daemonName: string;
+  daemonPersonality: string;
+  privacyLevel: string;
+  preferredProvider: string;
+}> = {
+  'test@pan.local': {
+    id: 'test-user-1',
+    email: 'test@pan.local',
+    name: 'Alex Chen',
+    image: undefined,
+    daemonName: 'Pan',
+    daemonPersonality: 'supportive',
+    privacyLevel: 'balanced',
+    preferredProvider: 'ollama',
+  },
+  'demo@pan.local': {
+    id: 'test-user-2',
+    email: 'demo@pan.local',
+    name: 'Sarah Kim',
+    image: undefined,
+    daemonName: 'Luna',
+    daemonPersonality: 'analytical',
+    privacyLevel: 'balanced',
+    preferredProvider: 'ollama',
+  },
 };
+
+// Legacy alias
+const TEST_USER = TEST_USERS['test@pan.local'];
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: isDatabaseAvailable() ? DrizzleAdapter(db) : undefined,
@@ -61,12 +85,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const { email, password } = parsed.data;
 
-        if (email === 'test@pan.local' && password) {
+        // Check for test users (any password works)
+        const testUser = TEST_USERS[email];
+        if (testUser && password) {
           return {
-            id: TEST_USER.id,
-            email: TEST_USER.email,
-            name: TEST_USER.name,
-            image: TEST_USER.image,
+            id: testUser.id,
+            email: testUser.email,
+            name: testUser.name,
+            image: testUser.image,
           };
         }
 
@@ -118,20 +144,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Pass Google token availability to client
         session.user.googleConnected = !!token.googleAccessToken;
 
-        if (token.id === TEST_USER.id) {
-          session.user.daemonName = TEST_USER.daemonName;
-          session.user.daemonPersonality = TEST_USER.daemonPersonality;
-          session.user.privacyLevel = TEST_USER.privacyLevel;
-          session.user.preferredProvider = TEST_USER.preferredProvider;
+        // Check if this is a test user
+        const testUser = Object.values(TEST_USERS).find(u => u.id === token.id);
+        if (testUser) {
+          session.user.daemonName = testUser.daemonName;
+          session.user.daemonPersonality = testUser.daemonPersonality;
+          session.user.privacyLevel = testUser.privacyLevel;
+          session.user.preferredProvider = testUser.preferredProvider;
           
           // Register test user for Pan-to-Pan negotiations
           registerUser({
-            id: TEST_USER.id,
-            name: TEST_USER.name,
-            email: TEST_USER.email,
-            daemonName: TEST_USER.daemonName,
-            daemonPersonality: TEST_USER.daemonPersonality as 'supportive',
-            privacyLevel: TEST_USER.privacyLevel as 'balanced',
+            id: testUser.id,
+            name: testUser.name,
+            email: testUser.email,
+            daemonName: testUser.daemonName,
+            daemonPersonality: testUser.daemonPersonality as 'supportive' | 'analytical' | 'direct' | 'creative',
+            privacyLevel: testUser.privacyLevel as 'minimal' | 'balanced' | 'open',
           });
           return session;
         }

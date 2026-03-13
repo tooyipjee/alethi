@@ -36,13 +36,13 @@ export default function LoginPage() {
     }
   };
 
-  const handleTestLogin = async () => {
+  const handleTestLogin = async (userEmail: string = 'test@pan.local') => {
     setIsLoading(true);
     setError('');
     try {
       const result = await signIn('credentials', {
-        email: 'test@pan.local',
-        password: 'test',
+        email: userEmail,
+        password: 'demo',
         redirect: false,
       });
       if (result?.error) {
@@ -72,14 +72,26 @@ export default function LoginPage() {
             <p className="text-[14px] text-neutral-500">Sign in to Pan</p>
           </div>
 
-          {/* Dev mode quick login */}
-          <button
-            onClick={handleTestLogin}
-            disabled={isLoading}
-            className="w-full h-12 mb-6 bg-emerald-600 text-white rounded-lg font-semibold text-[14px] hover:bg-emerald-500 transition-colors disabled:opacity-50"
-          >
-            {isLoading ? 'Signing in...' : '⚡ Quick Test Login (Ollama)'}
-          </button>
+          {/* Demo mode quick logins */}
+          <div className="space-y-2 mb-6">
+            <p className="text-[11px] text-neutral-500 text-center mb-3">Demo accounts (use two browsers to test Pan-to-Pan)</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => handleTestLogin('test@pan.local')}
+                disabled={isLoading}
+                className="h-12 bg-emerald-600 text-white rounded-lg font-semibold text-[13px] hover:bg-emerald-500 transition-colors disabled:opacity-50"
+              >
+                Alex (Pan)
+              </button>
+              <button
+                onClick={() => handleTestLogin('demo@pan.local')}
+                disabled={isLoading}
+                className="h-12 bg-blue-600 text-white rounded-lg font-semibold text-[13px] hover:bg-blue-500 transition-colors disabled:opacity-50"
+              >
+                Sarah (Luna)
+              </button>
+            </div>
+          </div>
 
           <div className="relative mb-6">
             <div className="absolute inset-0 flex items-center">
