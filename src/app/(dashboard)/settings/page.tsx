@@ -96,6 +96,27 @@ export default function SettingsPage() {
         <div className="max-w-xl mx-auto p-6">
           <div className="space-y-8">
 
+            {/* Profile Info */}
+            {session?.user && (
+              <Section title="Your Account">
+                <div className="p-4 rounded-lg border border-neutral-900 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-lg bg-neutral-800 flex items-center justify-center text-[18px] font-semibold">
+                    {session.user.name?.charAt(0) || 'U'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[15px] font-medium truncate">{session.user.name}</p>
+                    <p className="text-[12px] text-neutral-500 truncate">{session.user.email}</p>
+                  </div>
+                  {session.user.googleConnected && (
+                    <span className="text-[11px] text-emerald-400 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                      Google
+                    </span>
+                  )}
+                </div>
+              </Section>
+            )}
+
             {/* Integrations — the important new section */}
             <Section title="Integrations">
               <div className="space-y-4">

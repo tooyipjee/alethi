@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import Link from 'next/link';
+import { toast } from 'sonner';
 
 interface PanChatProps {
   panName: string;
@@ -11,6 +13,8 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  isNegotiation?: boolean;
+  error?: boolean;
 }
 
 export function PanChat({ panName, userName }: PanChatProps) {
@@ -19,6 +23,7 @@ export function PanChat({ panName, userName }: PanChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [retryMessage, setRetryMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -30,14 +35,17 @@ export function PanChat({ panName, userName }: PanChatProps) {
     inputRef.current?.focus();
   }, []);
 
-  const handleSubmit = useCallback(async (e?: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e?: React.FormEvent, overrideMessage?: string) => {
     e?.preventDefault();
-    if (!input.trim() || isLoading) return;
+    const messageText = overrideMessage || input.trim();
+    if (!messageText || isLoading) return;
+
+    setRetryMessage(null);
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: input.trim(),
+      content: messageText,
     };
 
     const allMessages = [...messages, userMessage];
@@ -46,6 +54,9 @@ export function PanChat({ panName, userName }: PanChatProps) {
     setIsLoading(true);
 
     const assistantId = crypto.randomUUID();
+
+    // Check if this looks like a negotiation request
+    const isNegotiationRequest = /(?:talk|speak|message|contact|negotiate|coordinate|check|ask|tell|ping|sync|schedule|set up|arrange|book).+(?:pan|daemon|meeting|call|review|sync|chat)/i.test(messageText);
 
     try {
       const response = await fetch('/api/chat', {
@@ -59,41 +70,74 @@ export function PanChat({ panName, userName }: PanChatProps) {
         }),
       });
 
-      if (!response.ok) throw new Error('Failed');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Request failed with status ${response.status}`);
+      }
 
       const reader = response.body?.getReader();
-      if (!reader) throw new Error('No stream');
+      if (!reader) throw new Error('No response stream');
 
-      setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '' }]);
+      setMessages(prev => [...prev, { 
+        id: assistantId, 
+        role: 'assistant', 
+        content: '',
+        isNegotiation: isNegotiationRequest,
+      }]);
 
       const decoder = new TextDecoder();
+      let fullContent = '';
+      
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const chunk = decoder.decode(value);
+        fullContent += chunk;
         setMessages(prev =>
           prev.map(m =>
             m.id === assistantId ? { ...m, content: m.content + chunk } : m
           )
         );
       }
-    } catch {
+
+      // Show toast if this was a negotiation
+      if (isNegotiationRequest && fullContent.includes('negotiat')) {
+        toast.success('Negotiation started! Check Pan Channels to follow along.', {
+          action: {
+            label: 'View',
+            onClick: () => window.location.href = '/spectator',
+          },
+        });
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Something went wrong';
+      setRetryMessage(messageText);
       setMessages(prev => [...prev, {
         id: assistantId,
         role: 'assistant',
-        content: 'Something went wrong. Try again.',
+        content: `I couldn't process that request. ${errorMessage}`,
+        error: true,
       }]);
+      toast.error('Failed to get response from Pan');
     } finally {
       setIsLoading(false);
     }
   }, [input, isLoading, messages]);
 
+  const handleRetry = () => {
+    if (retryMessage) {
+      // Remove the last error message
+      setMessages(prev => prev.slice(0, -1));
+      handleSubmit(undefined, retryMessage);
+    }
+  };
+
   const suggestions = [
     "What's happening today?",
     "Talk to Sarah's Pan about the design review",
     "What did I miss this morning?",
-    "Block my calendar for deep work",
+    "Summarize my recent emails",
   ];
 
   return (
@@ -148,19 +192,37 @@ export function PanChat({ panName, userName }: PanChatProps) {
                 <div key={m.id} className="group">
                   <div className="flex items-start gap-3">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                      m.role === 'user' ? 'bg-neutral-800' : 'bg-neutral-900'
+                      m.role === 'user' ? 'bg-neutral-800' : m.error ? 'bg-red-900/50' : 'bg-neutral-900'
                     }`}>
                       <span className="text-[12px]">
-                        {m.role === 'user' ? userName.charAt(0) : '◉'}
+                        {m.role === 'user' ? userName.charAt(0) : m.error ? '!' : '◉'}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] font-medium mb-1">
                         {m.role === 'user' ? 'You' : panName}
                       </p>
-                      <div className="text-[14px] text-neutral-300 leading-relaxed whitespace-pre-wrap break-words">
+                      <div className={`text-[14px] leading-relaxed whitespace-pre-wrap break-words ${
+                        m.error ? 'text-red-400' : 'text-neutral-300'
+                      }`}>
                         {m.content}
                       </div>
+                      {m.error && retryMessage && (
+                        <button
+                          onClick={handleRetry}
+                          className="mt-2 text-[12px] text-neutral-500 hover:text-white transition-colors"
+                        >
+                          ↻ Try again
+                        </button>
+                      )}
+                      {m.isNegotiation && m.content && !m.error && (
+                        <Link
+                          href="/spectator"
+                          className="inline-flex items-center gap-1 mt-3 text-[12px] text-emerald-500 hover:text-emerald-400 transition-colors"
+                        >
+                          <span>◎</span> View in Pan Channels →
+                        </Link>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -209,7 +271,7 @@ export function PanChat({ panName, userName }: PanChatProps) {
                 disabled={isLoading || !input.trim()}
                 className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-1.5 bg-white text-black text-[13px] font-semibold rounded-lg hover:bg-neutral-100 transition-colors disabled:opacity-30"
               >
-                Send
+                {isLoading ? '...' : 'Send'}
               </button>
             </div>
           </form>
