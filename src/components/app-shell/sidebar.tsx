@@ -18,6 +18,7 @@ export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname();
   const panName = user.daemonName || 'Pan';
   const [sources, setSources] = useState<string[]>([]);
+  const [negotiationCount, setNegotiationCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
@@ -27,6 +28,29 @@ export function Sidebar({ user }: SidebarProps) {
         if (data?.sources) setSources(data.sources);
       })
       .catch(() => {});
+
+    fetch('/api/negotiations')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.negotiations) {
+          setNegotiationCount(data.negotiations.length);
+        }
+      })
+      .catch(() => {});
+
+    // Poll for updates (SSE is on spectator page, this is a simpler approach for sidebar)
+    const interval = setInterval(() => {
+      fetch('/api/negotiations')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data?.negotiations) {
+            setNegotiationCount(data.negotiations.length);
+          }
+        })
+        .catch(() => {});
+    }, 10000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Close mobile menu on route change
@@ -66,7 +90,12 @@ export function Sidebar({ user }: SidebarProps) {
           <p className="text-[11px] text-neutral-500 font-medium uppercase tracking-wider px-2 mb-2">
             Pan Channels
           </p>
-          <NavItem href="/spectator" active={pathname === '/spectator'} icon="◎">
+          <NavItem 
+            href="/spectator" 
+            active={pathname === '/spectator'} 
+            icon="◎"
+            badge={negotiationCount > 0 ? negotiationCount : undefined}
+          >
             Negotiations
           </NavItem>
         </div>
@@ -86,10 +115,10 @@ export function Sidebar({ user }: SidebarProps) {
           ) : (
             <Link
               href="/settings"
-              className="flex items-center gap-2 px-2 py-1.5 text-[13px] text-neutral-600 hover:text-neutral-400 transition-colors"
+              className="flex items-center gap-2 px-2 py-1.5 text-[13px] text-amber-500/80 hover:text-amber-400 transition-colors"
             >
-              <span className="text-[12px]">+</span>
-              Connect sources
+              <span className="text-[12px]">⚡</span>
+              Connect Google to get started
             </Link>
           )}
         </div>
@@ -112,7 +141,7 @@ export function Sidebar({ user }: SidebarProps) {
               {user.name?.charAt(0) || 'U'}
             </div>
             <div>
-              <p className="text-[13px] font-medium">{user.name}</p>
+              <p className="text-[13px] font-medium truncate max-w-[120px]">{user.name}</p>
               <p className="text-[11px] text-neutral-500">{panName} is active</p>
             </div>
           </div>
@@ -162,11 +191,13 @@ function NavItem({
   href,
   active,
   icon,
+  badge,
   children,
 }: {
   href: string;
   active: boolean;
   icon: string;
+  badge?: number;
   children: React.ReactNode;
 }) {
   return (
@@ -179,7 +210,12 @@ function NavItem({
       }`}
     >
       <span className="text-[12px] opacity-60">{icon}</span>
-      {children}
+      <span className="flex-1">{children}</span>
+      {badge !== undefined && badge > 0 && (
+        <span className="min-w-[20px] h-5 px-1.5 bg-neutral-800 rounded-full text-[11px] flex items-center justify-center">
+          {badge}
+        </span>
+      )}
     </Link>
   );
 }
