@@ -40,16 +40,19 @@ export function PanChat({ panName, userName }: PanChatProps) {
       content: input.trim(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    const allMessages = [...messages, userMessage];
+    setMessages(allMessages);
     setInput('');
     setIsLoading(true);
+
+    const assistantId = crypto.randomUUID();
 
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [...messages, userMessage].map(m => ({
+          messages: allMessages.map(m => ({
             role: m.role,
             content: m.content,
           })),
@@ -61,29 +64,23 @@ export function PanChat({ panName, userName }: PanChatProps) {
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No stream');
 
-      const assistantMessage: Message = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: '',
-      };
-      setMessages(prev => [...prev, assistantMessage]);
+      setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '' }]);
 
       const decoder = new TextDecoder();
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
-        const text = decoder.decode(value);
-        setMessages(prev => {
-          const updated = [...prev];
-          const last = updated[updated.length - 1];
-          if (last.role === 'assistant') last.content += text;
-          return updated;
-        });
+
+        const chunk = decoder.decode(value);
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === assistantId ? { ...m, content: m.content + chunk } : m
+          )
+        );
       }
     } catch {
       setMessages(prev => [...prev, {
-        id: crypto.randomUUID(),
+        id: assistantId,
         role: 'assistant',
         content: 'Something went wrong. Try again.',
       }]);
@@ -100,9 +97,9 @@ export function PanChat({ panName, userName }: PanChatProps) {
   ];
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col min-h-0">
       {/* Header */}
-      <div className="h-14 px-6 flex items-center border-b border-neutral-900 bg-black">
+      <div className="h-14 px-6 flex items-center border-b border-neutral-900 bg-black shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-neutral-800 flex items-center justify-center">
             <span className="text-[14px]">◉</span>
@@ -115,7 +112,7 @@ export function PanChat({ panName, userName }: PanChatProps) {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto" ref={scrollRef}>
+      <div className="flex-1 min-h-0 overflow-y-auto" ref={scrollRef}>
         <div className="max-w-3xl mx-auto px-6 py-8">
           {messages.length === 0 ? (
             <div className="py-16">
@@ -126,7 +123,7 @@ export function PanChat({ panName, userName }: PanChatProps) {
                 Hey {userName.split(' ')[0]}
               </h2>
               <p className="text-[15px] text-neutral-400 mb-10">
-                I&apos;m {panName}, your Pan. I can talk to other Pans, 
+                I&apos;m {panName}, your Pan. I can talk to other Pans,
                 check your tools, and handle coordination so you don&apos;t have to.
               </p>
               <div className="space-y-2">
@@ -150,7 +147,7 @@ export function PanChat({ panName, userName }: PanChatProps) {
               {messages.map((m) => (
                 <div key={m.id} className="group">
                   <div className="flex items-start gap-3">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                       m.role === 'user' ? 'bg-neutral-800' : 'bg-neutral-900'
                     }`}>
                       <span className="text-[12px]">
@@ -161,14 +158,14 @@ export function PanChat({ panName, userName }: PanChatProps) {
                       <p className="text-[13px] font-medium mb-1">
                         {m.role === 'user' ? 'You' : panName}
                       </p>
-                      <p className="text-[14px] text-neutral-300 leading-relaxed whitespace-pre-wrap">
+                      <div className="text-[14px] text-neutral-300 leading-relaxed whitespace-pre-wrap break-words">
                         {m.content}
-                      </p>
+                      </div>
                     </div>
                   </div>
                 </div>
               ))}
-              {isLoading && (
+              {isLoading && messages[messages.length - 1]?.content === '' && (
                 <div className="flex items-start gap-3">
                   <div className="w-8 h-8 rounded-lg bg-neutral-900 flex items-center justify-center">
                     <span className="text-[12px]">◉</span>
@@ -188,8 +185,8 @@ export function PanChat({ panName, userName }: PanChatProps) {
         </div>
       </div>
 
-      {/* Input */}
-      <div className="border-t border-neutral-900 bg-black p-4">
+      {/* Input - always visible at bottom */}
+      <div className="border-t border-neutral-900 bg-black p-4 shrink-0">
         <div className="max-w-3xl mx-auto">
           <form onSubmit={handleSubmit}>
             <div className="relative">
