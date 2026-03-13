@@ -1,6 +1,113 @@
 import type { WorkContext } from '@/types/daemon';
 
+// Personalized mock context for demo users
+const DEMO_USER_CONTEXTS: Record<string, () => WorkContext[]> = {
+  'test-user-1': () => getAlexContext('test-user-1'),
+  'test-user-2': () => getSarahContext('test-user-2'),
+};
+
+function getAlexContext(userId: string): WorkContext[] {
+  const now = new Date();
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  return [
+    {
+      id: 'alex-cal-1',
+      userId,
+      source: 'calendar',
+      title: 'Meeting: Product sync with Sarah',
+      summary: 'Weekly product sync - need to discuss Q2 roadmap priorities and API timeline. Sarah leading design review.',
+      data: { type: 'event', time: 'Tomorrow 2pm', attendees: ['Sarah Kim', 'Mike Chen'] },
+      createdAt: yesterday,
+      updatedAt: now,
+    },
+    {
+      id: 'alex-gh-1',
+      userId,
+      source: 'github',
+      title: 'PR: Implement real-time sync',
+      summary: 'Open PR #156 - adds WebSocket support for live updates. Needs Sarah\'s review on the UI components.',
+      data: { type: 'pull_request', number: 156, status: 'needs_review', reviewer_requested: 'Sarah' },
+      createdAt: yesterday,
+      updatedAt: now,
+    },
+    {
+      id: 'alex-email-1',
+      userId,
+      source: 'gmail',
+      title: 'Email: Budget approval needed',
+      summary: 'CFO requesting sign-off on cloud infrastructure costs by EOD Friday.',
+      data: { type: 'email', from: 'finance@company.com', urgent: true },
+      createdAt: yesterday,
+      updatedAt: now,
+    },
+    {
+      id: 'alex-lin-1',
+      userId,
+      source: 'linear',
+      title: 'Issue: API rate limiting',
+      summary: 'High priority - implement rate limiting before launch. Sarah\'s team needs this for the mobile app.',
+      data: { type: 'issue', id: 'PAN-302', priority: 'high', status: 'in_progress' },
+      createdAt: yesterday,
+      updatedAt: now,
+    },
+  ];
+}
+
+function getSarahContext(userId: string): WorkContext[] {
+  const now = new Date();
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  return [
+    {
+      id: 'sarah-cal-1',
+      userId,
+      source: 'calendar',
+      title: 'Meeting: Design review',
+      summary: 'Need to present new dashboard mockups to Alex\'s team. Have some questions about API capabilities.',
+      data: { type: 'event', time: 'Tomorrow 3pm', attendees: ['Alex Chen', 'Design Team'] },
+      createdAt: yesterday,
+      updatedAt: now,
+    },
+    {
+      id: 'sarah-gh-1',
+      userId,
+      source: 'github',
+      title: 'PR: Dashboard redesign',
+      summary: 'Complete overhaul of the analytics dashboard. Waiting on Alex\'s backend changes before final testing.',
+      data: { type: 'pull_request', number: 203, status: 'draft', blocked_by: 'API changes' },
+      createdAt: yesterday,
+      updatedAt: now,
+    },
+    {
+      id: 'sarah-email-1',
+      userId,
+      source: 'gmail',
+      title: 'Email: User research results',
+      summary: 'Latest usability study shows users struggling with current navigation. Need to discuss with Alex.',
+      data: { type: 'email', from: 'research@company.com', actionable: true },
+      createdAt: yesterday,
+      updatedAt: now,
+    },
+    {
+      id: 'sarah-lin-1',
+      userId,
+      source: 'linear',
+      title: 'Issue: Mobile responsive fixes',
+      summary: 'Medium priority - several screens not rendering properly on mobile. Depends on Alex\'s CSS framework.',
+      data: { type: 'issue', id: 'PAN-287', priority: 'medium', status: 'blocked', blocked_by: 'Alex' },
+      createdAt: yesterday,
+      updatedAt: now,
+    },
+  ];
+}
+
 export function getMockWorkContext(userId: string): WorkContext[] {
+  // Return personalized context for demo users
+  const demoContext = DEMO_USER_CONTEXTS[userId];
+  if (demoContext) {
+    return demoContext();
+  }
+
+  // Generic mock context for other users
   const now = new Date();
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
