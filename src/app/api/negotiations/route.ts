@@ -1,89 +1,41 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { initiateNegotiation, getNegotiationHistory } from '@/lib/ai/orchestrator';
-import { db } from '@/lib/db';
-import { negotiations, negotiationMessages, users } from '@/lib/db/schema';
-import { eq, or, desc } from 'drizzle-orm';
+import { getUserNegotiations } from '@/lib/negotiations/store';
+import { runNegotiation } from '@/lib/negotiations/negotiate';
 import { z } from 'zod';
 
 const negotiationRequestSchema = z.object({
-  targetUserId: z.string().uuid(),
+  targetName: z.string().min(1),
   topic: z.string().min(1),
-  initialMessage: z.string().min(1),
+  message: z.string().min(1),
 });
 
 export async function GET() {
   try {
     const session = await auth();
-    
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userNegotiations = await db.query.negotiations.findMany({
-      where: or(
-        eq(negotiations.initiatorUserId, session.user.id),
-        eq(negotiations.targetUserId, session.user.id)
-      ),
-      orderBy: [desc(negotiations.updatedAt)],
-      limit: 20,
-    });
+    const negotiations = getUserNegotiations(session.user.id);
 
-    const negotiationsWithDetails = await Promise.all(
-      userNegotiations.map(async (neg) => {
-        const messages = await db.query.negotiationMessages.findMany({
-          where: eq(negotiationMessages.negotiationId, neg.id),
-        });
+    const mapped = negotiations.map(n => ({
+      ...n,
+      isInitiator: n.initiator.id === session.user.id,
+    }));
 
-        const [initiator, target] = await Promise.all([
-          db.query.users.findFirst({ where: eq(users.id, neg.initiatorUserId) }),
-          db.query.users.findFirst({ where: eq(users.id, neg.targetUserId) }),
-        ]);
-
-        return {
-          id: neg.id,
-          topic: neg.topic,
-          status: neg.status,
-          outcome: neg.outcome,
-          createdAt: neg.createdAt,
-          updatedAt: neg.updatedAt,
-          initiator: initiator ? {
-            id: initiator.id,
-            name: initiator.name,
-            daemonName: initiator.daemonName,
-          } : null,
-          target: target ? {
-            id: target.id,
-            name: target.name,
-            daemonName: target.daemonName,
-          } : null,
-          messages: messages.map(m => ({
-            id: m.id,
-            fromUserId: m.fromUserId,
-            toUserId: m.toUserId,
-            intent: m.intent,
-            content: m.content,
-            createdAt: m.createdAt,
-          })),
-          isInitiator: neg.initiatorUserId === session.user.id,
-        };
-      })
-    );
-
-    return NextResponse.json({ negotiations: negotiationsWithDetails });
+    return NextResponse.json({ negotiations: mapped });
   } catch (error) {
     console.error('Negotiations fetch error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   try {
     const session = await auth();
-    
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -98,38 +50,22 @@ export async function POST(request: Request) {
       );
     }
 
-    const { targetUserId, topic, initialMessage } = parsed.data;
+    const { targetName, topic, message } = parsed.data;
 
-    if (targetUserId === session.user.id) {
-      return NextResponse.json(
-        { error: 'Cannot negotiate with yourself' },
-        { status: 400 }
-      );
-    }
-
-    const targetUser = await db.query.users.findFirst({
-      where: eq(users.id, targetUserId),
-    });
-
-    if (!targetUser) {
-      return NextResponse.json(
-        { error: 'Target user not found' },
-        { status: 404 }
-      );
-    }
-
-    const result = await initiateNegotiation({
-      initiatorUserId: session.user.id,
-      targetUserId,
+    const result = await runNegotiation({
+      userId: session.user.id,
+      userName: session.user.name || 'User',
+      userPanName: session.user.daemonName || 'Pan',
+      targetPersonName: targetName,
       topic,
-      initialMessage,
+      userMessage: message,
     });
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Negotiation initiation error:', error);
+    console.error('Negotiation error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Negotiation failed', details: String(error) },
       { status: 500 }
     );
   }

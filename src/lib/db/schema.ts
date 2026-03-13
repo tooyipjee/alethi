@@ -7,7 +7,7 @@ export const conversationTypeEnum = pgEnum('conversation_type', ['personal', 'ne
 export const messageRoleEnum = pgEnum('message_role', ['user', 'assistant', 'system']);
 export const negotiationStatusEnum = pgEnum('negotiation_status', ['pending', 'in_progress', 'completed', 'failed', 'cancelled']);
 export const negotiationIntentEnum = pgEnum('negotiation_intent', ['request', 'propose', 'accept', 'counter', 'decline']);
-export const contextSourceEnum = pgEnum('context_source', ['github', 'notion', 'linear', 'manual']);
+export const contextSourceEnum = pgEnum('context_source', ['github', 'notion', 'linear', 'slack', 'calendar', 'manual']);
 
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
