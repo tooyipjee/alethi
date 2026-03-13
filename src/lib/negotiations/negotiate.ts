@@ -1,10 +1,10 @@
 import { generateChat, type AIProvider, type AIMessage } from '@/lib/ai/providers';
-import { buildDaemonSystemPrompt, synthesizeTruthPacket, type DaemonConfig } from '@/lib/ai/daemon';
-import { getMockWorkContext, getMockOtherUsers } from '@/lib/mock/work-context';
-import { filterForPrivacy } from '@/lib/privacy/truth-filter';
-import { buildWorkGraph, synthesizeTruthPacket as graphSynthesizeTruthPacket } from '@/lib/mcp/work-graph';
+import { buildDaemonSystemPrompt, type DaemonConfig } from '@/lib/ai/daemon';
+import { getMockOtherUsers } from '@/lib/mock/work-context';
 import { saveNegotiation, type StoredNegotiation, type NegotiationMessage } from './store';
-import type { NegotiationIntent, PrivacyLevel, TruthPacket } from '@/types/daemon';
+import { logContextShare } from '@/lib/security/audit';
+import { findUserByName, buildUserTruthPacket } from '@/lib/users/user-service';
+import type { NegotiationIntent, TruthPacket } from '@/types/daemon';
 
 const NEGOTIATION_PROMPT = `You are participating in a Pan-to-Pan negotiation on behalf of your human.
 Your goal is to represent your human's interests while being collaborative.
@@ -40,24 +40,13 @@ function getProvider(): AIProvider {
   return 'ollama';
 }
 
-function buildTruthPacket(userId: string): TruthPacket {
-  const context = getMockWorkContext(userId);
-  const workGraph = buildWorkGraph(context);
-  return filterForPrivacy(
-    graphSynthesizeTruthPacket(workGraph, 'balanced'),
-    'balanced'
-  );
-}
-
 function parseResponse(text: string): { intent: NegotiationIntent; message: string } {
-  // Strip markdown fences and thinking tags if present
   let cleaned = text
     .replace(/```json\s*/gi, '')
     .replace(/```\s*/g, '')
     .replace(/<think>[\s\S]*?<\/think>/g, '')
     .trim();
 
-  // Try to extract JSON from the response
   const jsonMatch = cleaned.match(/\{[\s\S]*?"intent"[\s\S]*?"message"[\s\S]*?\}/);
   if (jsonMatch) {
     cleaned = jsonMatch[0];
@@ -69,7 +58,6 @@ function parseResponse(text: string): { intent: NegotiationIntent; message: stri
     const intent = validIntents.includes(parsed.intent) ? parsed.intent : 'propose';
     return { intent, message: parsed.message || cleaned };
   } catch {
-    // Fallback: infer intent from text
     const lower = text.toLowerCase();
     let intent: NegotiationIntent = 'propose';
     if (lower.includes('"accept"') || lower.includes('i accept') || lower.includes('agreed')) intent = 'accept';
@@ -129,30 +117,79 @@ ${historyText}
 Respond with JSON only.`;
 
   const systemPrompt = buildDaemonSystemPrompt(daemonConfig) + '\n\n' + NEGOTIATION_PROMPT;
-
   const messages: AIMessage[] = [{ role: 'user', content: userPrompt }];
 
   const result = await generateChat({ provider, messages, systemPrompt, fast: true });
   return parseResponse(result.text);
 }
 
+interface TargetUser {
+  id: string;
+  name: string;
+  daemonName: string;
+  daemonPersonality: 'analytical' | 'supportive' | 'direct' | 'creative';
+  privacyLevel: 'minimal' | 'balanced' | 'open';
+  truthPacket: TruthPacket;
+}
+
+async function findTargetUser(targetPersonName: string, excludeUserId: string): Promise<TargetUser | null> {
+  // First try to find a real user
+  const realUser = await findUserByName(targetPersonName, excludeUserId);
+  
+  if (realUser) {
+    return {
+      id: realUser.id,
+      name: realUser.name,
+      daemonName: realUser.daemonName,
+      daemonPersonality: realUser.daemonPersonality,
+      privacyLevel: realUser.privacyLevel,
+      truthPacket: buildUserTruthPacket(realUser.id, realUser.privacyLevel),
+    };
+  }
+
+  // Fall back to mock users for demo/testing
+  const mockUsers = getMockOtherUsers();
+  const mockUser = mockUsers.find(u =>
+    u.name.toLowerCase().includes(targetPersonName.toLowerCase())
+  ) || mockUsers[0];
+
+  if (mockUser) {
+    // Build TruthPacket from simplified mock context
+    const mockTruthPacket: TruthPacket = {
+      availability: mockUser.workContext
+        .filter(c => c.title.includes('Available'))
+        .map(c => c.summary),
+      workloadSummary: mockUser.workContext
+        .find(c => c.title.includes('Working'))?.summary || 'Moderate workload',
+      relevantExpertise: [mockUser.role],
+      currentFocus: mockUser.workContext[0]?.summary,
+    };
+
+    return {
+      id: mockUser.id,
+      name: mockUser.name,
+      daemonName: mockUser.daemonName,
+      daemonPersonality: 'analytical',
+      privacyLevel: 'balanced',
+      truthPacket: mockTruthPacket,
+    };
+  }
+
+  return null;
+}
+
 export async function runNegotiation(params: NegotiateParams): Promise<StoredNegotiation> {
   const { userId, userName, userPanName, targetPersonName, topic, userMessage } = params;
 
-  // Find the target mock user
-  const otherUsers = getMockOtherUsers();
-  const target = otherUsers.find(u =>
-    u.name.toLowerCase().includes(targetPersonName.toLowerCase())
-  ) || otherUsers[0];
+  // Find target user (real or mock)
+  const target = await findTargetUser(targetPersonName, userId);
+  
+  if (!target) {
+    throw new Error(`Could not find user "${targetPersonName}"`);
+  }
 
   const provider = getProvider();
-  const myTruth = buildTruthPacket(userId);
-  const targetTruth: TruthPacket = {
-    availability: target.workContext.filter(c => c.title.includes('Available')).map(c => c.summary),
-    workloadSummary: target.workContext.find(c => c.title.includes('Working'))?.summary || 'Moderate workload',
-    relevantExpertise: [target.role],
-    currentFocus: target.workContext[0]?.summary,
-  };
+  const myTruth = buildUserTruthPacket(userId, 'balanced');
 
   const negotiationId = crypto.randomUUID();
   const messages: NegotiationMessage[] = [];
@@ -172,7 +209,7 @@ export async function runNegotiation(params: NegotiateParams): Promise<StoredNeg
   // Turn 1: Your Pan opens
   const turn1 = await generateTurn(
     userPanName, 'supportive', provider, userId,
-    target.daemonName, topic, myTruth, targetTruth,
+    target.daemonName, topic, myTruth, target.truthPacket,
     messages, userMessage,
   );
   messages.push({
@@ -188,8 +225,8 @@ export async function runNegotiation(params: NegotiateParams): Promise<StoredNeg
 
   // Turn 2: Their Pan responds
   const turn2 = await generateTurn(
-    target.daemonName, 'analytical', provider, target.id,
-    userPanName, topic, targetTruth, myTruth,
+    target.daemonName, target.daemonPersonality, provider, target.id,
+    userPanName, topic, target.truthPacket, myTruth,
     messages,
   );
   messages.push({
@@ -207,7 +244,7 @@ export async function runNegotiation(params: NegotiateParams): Promise<StoredNeg
   if (turn2.intent !== 'accept' && turn2.intent !== 'decline') {
     const turn3 = await generateTurn(
       userPanName, 'supportive', provider, userId,
-      target.daemonName, topic, myTruth, targetTruth,
+      target.daemonName, topic, myTruth, target.truthPacket,
       messages,
     );
     messages.push({
@@ -224,8 +261,8 @@ export async function runNegotiation(params: NegotiateParams): Promise<StoredNeg
     // Turn 4: Their Pan resolves
     if (turn3.intent !== 'accept' && turn3.intent !== 'decline') {
       const turn4 = await generateTurn(
-        target.daemonName, 'analytical', provider, target.id,
-        userPanName, topic, targetTruth, myTruth,
+        target.daemonName, target.daemonPersonality, provider, target.id,
+        userPanName, topic, target.truthPacket, myTruth,
         messages,
       );
       messages.push({
@@ -254,6 +291,17 @@ export async function runNegotiation(params: NegotiateParams): Promise<StoredNeg
     negotiation.outcome = 'Negotiation concluded';
   }
   negotiation.updatedAt = new Date();
+
+  // Audit: log what context was shared between Pans
+  const sharedFields = Object.keys(myTruth).filter(k => {
+    const val = myTruth[k as keyof TruthPacket];
+    return val !== undefined && (Array.isArray(val) ? val.length > 0 : true);
+  });
+  const allPossibleFields = ['availability', 'workloadSummary', 'relevantExpertise', 'currentFocus', 'recentActivity', 'projectStatus'];
+  const blockedFields = allPossibleFields.filter(f => !sharedFields.includes(f));
+
+  logContextShare(userId, target.id, negotiationId, sharedFields, blockedFields);
+  logContextShare(target.id, userId, negotiationId, Object.keys(target.truthPacket), []);
 
   saveNegotiation(negotiation);
   return negotiation;

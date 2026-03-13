@@ -1,7 +1,7 @@
 import { auth } from '@/lib/auth';
 import { streamDaemonChat } from '@/lib/ai/daemon';
 import { getMockOtherUsers } from '@/lib/mock/work-context';
-import { getUserContexts } from '@/lib/integrations/context-store';
+import { searchContexts } from '@/lib/integrations/context-store';
 import { runNegotiation } from '@/lib/negotiations/negotiate';
 import type { AIMessage, AIProvider } from '@/lib/ai/providers';
 
@@ -123,8 +123,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // Get user's work context (real if synced, mock fallback)
-    const workContext = getUserContexts(userId);
+    // Retrieve only the most relevant context via vector similarity
+    const workContext = await searchContexts(userId, lastMessage);
 
     const daemonConfig = {
       name: daemonName,

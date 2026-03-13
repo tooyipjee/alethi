@@ -8,6 +8,7 @@ import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { storeTokens } from '@/lib/integrations/token-store';
+import { registerUser } from '@/lib/users/user-service';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -122,6 +123,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           session.user.daemonPersonality = TEST_USER.daemonPersonality;
           session.user.privacyLevel = TEST_USER.privacyLevel;
           session.user.preferredProvider = TEST_USER.preferredProvider;
+          
+          // Register test user for Pan-to-Pan negotiations
+          registerUser({
+            id: TEST_USER.id,
+            name: TEST_USER.name,
+            email: TEST_USER.email,
+            daemonName: TEST_USER.daemonName,
+            daemonPersonality: TEST_USER.daemonPersonality as 'supportive',
+            privacyLevel: TEST_USER.privacyLevel as 'balanced',
+          });
           return session;
         }
 
@@ -135,7 +146,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             session.user.daemonPersonality = dbUser.daemonPersonality;
             session.user.privacyLevel = dbUser.privacyLevel;
             session.user.preferredProvider = dbUser.preferredProvider;
+            
+            // Register user for Pan-to-Pan negotiations
+            registerUser({
+              id: dbUser.id,
+              name: dbUser.name,
+              email: dbUser.email,
+              daemonName: dbUser.daemonName,
+              daemonPersonality: dbUser.daemonPersonality,
+              privacyLevel: dbUser.privacyLevel,
+              image: dbUser.image,
+            });
           }
+        } else if (session.user.email && session.user.name) {
+          // Register OAuth user without DB (Google OAuth user)
+          registerUser({
+            id: session.user.id,
+            name: session.user.name,
+            email: session.user.email,
+            daemonName: session.user.daemonName || 'Pan',
+            daemonPersonality: (session.user.daemonPersonality as 'supportive') || 'supportive',
+            privacyLevel: (session.user.privacyLevel as 'balanced') || 'balanced',
+            image: session.user.image,
+          });
         }
       }
       return session;

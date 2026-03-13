@@ -1,5 +1,39 @@
 import type { WorkContext } from '@/types/daemon';
 
+const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
+
+export async function refreshGoogleToken(refreshToken: string): Promise<{ accessToken: string; expiresAt: number }> {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    throw new Error('Google OAuth credentials not configured');
+  }
+
+  const res = await fetch(GOOGLE_TOKEN_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Token refresh failed: ${res.status} ${err}`);
+  }
+
+  const data = await res.json();
+
+  return {
+    accessToken: data.access_token,
+    expiresAt: Date.now() + (data.expires_in * 1000),
+  };
+}
+
 interface GmailMessage {
   id: string;
   threadId: string;

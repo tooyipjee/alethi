@@ -1,8 +1,33 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { getTokens } from '@/lib/integrations/token-store';
-import { syncGoogleContext } from '@/lib/integrations/google';
-import { setUserContexts } from '@/lib/integrations/context-store';
+import { getTokens, isTokenExpired, updateAccessToken } from '@/lib/integrations/token-store';
+import { syncGoogleContext, refreshGoogleToken } from '@/lib/integrations/google';
+import { setUserContexts, getConnectedSources, getLastSynced, hasRealContext } from '@/lib/integrations/context-store';
+import { logSync } from '@/lib/security/audit';
+
+async function getValidAccessToken(userId: string): Promise<string | null> {
+  const tokens = getTokens(userId);
+  if (!tokens?.googleAccessToken) return null;
+
+  if (!isTokenExpired(userId)) {
+    return tokens.googleAccessToken;
+  }
+
+  // Token expired — attempt refresh
+  if (!tokens.googleRefreshToken) {
+    console.warn('Google token expired and no refresh token available');
+    return null;
+  }
+
+  try {
+    const refreshed = await refreshGoogleToken(tokens.googleRefreshToken);
+    updateAccessToken(userId, refreshed.accessToken, refreshed.expiresAt);
+    return refreshed.accessToken;
+  } catch (err) {
+    console.error('Token refresh failed:', err);
+    return null;
+  }
+}
 
 export async function POST() {
   try {
@@ -12,27 +37,33 @@ export async function POST() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const tokens = getTokens(session.user.id);
-    if (!tokens?.googleAccessToken) {
+    const userId = session.user.id;
+    const accessToken = await getValidAccessToken(userId);
+
+    if (!accessToken) {
       return NextResponse.json(
-        { error: 'Google not connected. Sign in with Google to connect.' },
+        { error: 'Google not connected or token expired. Please re-authenticate with Google.' },
         { status: 400 }
       );
     }
 
-    const result = await syncGoogleContext(session.user.id, tokens.googleAccessToken);
+    const result = await syncGoogleContext(userId, accessToken);
 
-    // Store Gmail contexts
     const gmailContexts = result.contexts.filter(c => c.source === 'gmail');
     if (gmailContexts.length > 0) {
-      setUserContexts(session.user.id, 'gmail', gmailContexts);
+      await setUserContexts(userId, 'gmail', gmailContexts);
     }
 
-    // Store Calendar contexts
     const calendarContexts = result.contexts.filter(c => c.source === 'calendar');
     if (calendarContexts.length > 0) {
-      setUserContexts(session.user.id, 'calendar', calendarContexts);
+      await setUserContexts(userId, 'calendar', calendarContexts);
     }
+
+    logSync(userId, 'google', {
+      emailCount: result.emailCount,
+      eventCount: result.eventCount,
+      contextCount: result.contexts.length,
+    });
 
     return NextResponse.json({
       success: true,
@@ -49,7 +80,6 @@ export async function POST() {
   }
 }
 
-// GET returns current sync status
 export async function GET() {
   try {
     const session = await auth();
@@ -59,7 +89,6 @@ export async function GET() {
     }
 
     const tokens = getTokens(session.user.id);
-    const { getConnectedSources, getLastSynced, hasRealContext } = await import('@/lib/integrations/context-store');
 
     return NextResponse.json({
       googleConnected: !!tokens?.googleAccessToken,

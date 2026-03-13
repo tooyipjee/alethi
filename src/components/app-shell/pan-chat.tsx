@@ -99,7 +99,7 @@ export function PanChat({ panName, userName }: PanChatProps) {
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Header */}
-      <div className="h-14 px-6 flex items-center border-b border-neutral-900 bg-black shrink-0">
+      <div className="h-14 px-6 md:px-6 pl-16 md:pl-6 flex items-center border-b border-neutral-900 bg-black shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-neutral-800 flex items-center justify-center">
             <span className="text-[14px]">◉</span>

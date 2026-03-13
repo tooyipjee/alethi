@@ -1,70 +1,67 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { StartNegotiation } from '@/components/spectator/start-negotiation';
+import { useNegotiationsStream } from '@/hooks/use-negotiations-stream';
 
-interface NegotiationMessage {
+interface PanUser {
   id: string;
-  fromUserId: string;
-  fromPanName: string;
-  toPanName: string;
-  intent: string;
-  content: string;
-  createdAt: string;
-}
-
-interface Negotiation {
-  id: string;
-  topic: string;
-  status: string;
-  outcome?: string;
-  initiator: { id: string; name: string; daemonName: string };
-  target: { id: string; name: string; daemonName: string };
-  messages: NegotiationMessage[];
-  isInitiator: boolean;
-  createdAt: string;
+  name: string;
+  daemonName: string;
+  image?: string;
 }
 
 export default function SpectatorPage() {
-  const [negotiations, setNegotiations] = useState<Negotiation[]>([]);
+  const { negotiations, isConnected, reconnect } = useNegotiationsStream();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [users, setUsers] = useState<PanUser[]>([]);
 
-  const fetchNegotiations = useCallback(async () => {
+  const fetchUsers = useCallback(async () => {
     try {
-      const res = await fetch('/api/negotiations');
+      const res = await fetch('/api/users');
       if (res.ok) {
         const data = await res.json();
-        setNegotiations(data.negotiations || []);
+        setUsers(data.users || []);
       }
     } catch {
       // ignore
-    } finally {
-      setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchNegotiations();
-    const interval = setInterval(fetchNegotiations, 5000);
-    return () => clearInterval(interval);
-  }, [fetchNegotiations]);
+    fetchUsers();
+  }, [fetchUsers]);
 
   const selected = negotiations.find(n => n.id === selectedId);
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Header */}
-      <div className="h-14 px-6 flex items-center border-b border-neutral-900 bg-black shrink-0">
+      <div className="h-14 px-6 md:px-6 pl-16 md:pl-6 flex items-center justify-between border-b border-neutral-900 bg-black shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-neutral-800 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-neutral-800 flex items-center justify-center shrink-0">
             <span className="text-[14px]">◎</span>
           </div>
-          <div>
-            <p className="text-[14px] font-medium">Pan Channels</p>
-            <p className="text-[11px] text-neutral-500">
-              {negotiations.length} negotiation{negotiations.length !== 1 ? 's' : ''}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="text-[14px] font-medium truncate">Pan Channels</p>
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isConnected ? 'bg-emerald-500' : 'bg-red-500'}`} />
+            </div>
+            <p className="text-[11px] text-neutral-500 truncate">
+              {negotiations.length} negotiation{negotiations.length !== 1 ? 's' : ''} · {isConnected ? 'live' : 'reconnecting...'}
             </p>
           </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {!isConnected && (
+            <button
+              onClick={reconnect}
+              className="hidden sm:block px-3 py-1.5 text-[12px] text-neutral-400 hover:text-white transition-colors"
+            >
+              Reconnect
+            </button>
+          )}
+          <StartNegotiation onSuccess={fetchUsers} />
         </div>
       </div>
 
@@ -72,15 +69,11 @@ export default function SpectatorPage() {
         {/* List */}
         <div className="w-72 border-r border-neutral-900 overflow-y-auto shrink-0">
           <div className="p-4">
-            {isLoading ? (
-              <p className="text-[13px] text-neutral-500 px-3 py-8 text-center">Loading...</p>
-            ) : negotiations.length === 0 ? (
-              <div className="text-center py-12 px-4">
-                <p className="text-[15px] font-medium mb-2">No negotiations yet</p>
-                <p className="text-[13px] text-neutral-500 leading-relaxed">
-                  Go to your Pan and say something like
-                  &quot;Talk to Sarah&apos;s Pan about the design review&quot;
-                  to start a Pan-to-Pan negotiation.
+            {negotiations.length === 0 ? (
+              <div className="text-center py-8 px-4">
+                <p className="text-[14px] font-medium mb-2">No negotiations yet</p>
+                <p className="text-[12px] text-neutral-500 leading-relaxed">
+                  Click "New Negotiation" above or ask your Pan to talk to someone.
                 </p>
               </div>
             ) : (
@@ -144,11 +137,11 @@ export default function SpectatorPage() {
 
               <div className="space-y-6">
                 {selected.messages.map((m) => {
-                  const isYours = m.fromUserId === (selected.isInitiator ? selected.initiator.id : selected.target.id);
+                  const isInitiatorMsg = m.fromPanName === selected.initiator.daemonName;
                   return (
                     <div key={m.id} className="flex items-start gap-3">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                        isYours ? 'bg-neutral-800' : 'bg-neutral-900'
+                        isInitiatorMsg ? 'bg-neutral-800' : 'bg-neutral-900'
                       }`}>
                         <span className="text-[12px]">◉</span>
                       </div>
@@ -180,17 +173,43 @@ export default function SpectatorPage() {
               )}
             </div>
           ) : (
-            <div className="h-full flex items-center justify-center">
-              <div className="text-center">
-                <p className="text-[14px] text-neutral-500 mb-2">
-                  {negotiations.length > 0
-                    ? 'Select a negotiation to view'
-                    : 'No Pan-to-Pan conversations yet'}
+            <div className="p-6">
+              <div className="max-w-md mx-auto">
+                <h3 className="text-[15px] font-medium mb-1">Other Pans</h3>
+                <p className="text-[12px] text-neutral-500 mb-4">
+                  These users are available for Pan-to-Pan negotiations
                 </p>
-                {negotiations.length === 0 && (
-                  <p className="text-[12px] text-neutral-600">
-                    Ask your Pan to talk to someone
-                  </p>
+                
+                {users.length === 0 ? (
+                  <div className="text-center py-12 px-4 border border-neutral-900 rounded-lg">
+                    <p className="text-[14px] text-neutral-400 mb-2">No other users yet</p>
+                    <p className="text-[12px] text-neutral-600">
+                      Invite someone to sign up and connect with their Pan
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {users.map((user) => (
+                      <div
+                        key={user.id}
+                        className="flex items-center justify-between p-3 border border-neutral-900 rounded-lg hover:bg-neutral-950 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center">
+                            <span className="text-[14px]">◉</span>
+                          </div>
+                          <div>
+                            <p className="text-[13px] font-medium">{user.name}</p>
+                            <p className="text-[11px] text-neutral-500">{user.daemonName}</p>
+                          </div>
+                        </div>
+                        <StartNegotiation 
+                          onSuccess={fetchUsers} 
+                          initialTarget={user}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>

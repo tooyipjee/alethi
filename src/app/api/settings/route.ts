@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { db } from '@/lib/db';
+import { db, isDatabaseAvailable } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
@@ -9,8 +9,60 @@ const settingsSchema = z.object({
   daemonName: z.string().min(1).optional(),
   personality: z.enum(['analytical', 'supportive', 'direct', 'creative']).optional(),
   privacyLevel: z.enum(['minimal', 'balanced', 'open']).optional(),
-  provider: z.enum(['openai', 'anthropic']).optional(),
+  provider: z.enum(['openai', 'anthropic', 'ollama']).optional(),
 });
+
+// In-memory settings store for test users (no DB)
+const testUserSettings = new Map<string, {
+  daemonName: string;
+  daemonPersonality: string;
+  privacyLevel: string;
+  preferredProvider: string;
+}>();
+
+export async function GET() {
+  try {
+    const session = await auth();
+    
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // For test user or when DB is unavailable, return session data
+    if (!isDatabaseAvailable() || session.user.email === 'test@pan.local') {
+      const stored = testUserSettings.get(session.user.id);
+      return NextResponse.json({
+        id: session.user.id,
+        daemonName: stored?.daemonName || session.user.daemonName || 'Pan',
+        daemonPersonality: stored?.daemonPersonality || session.user.daemonPersonality || 'supportive',
+        privacyLevel: stored?.privacyLevel || session.user.privacyLevel || 'balanced',
+        preferredProvider: stored?.preferredProvider || 'ollama',
+      });
+    }
+
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, session.user.id),
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      id: user.id,
+      daemonName: user.daemonName,
+      daemonPersonality: user.daemonPersonality,
+      privacyLevel: user.privacyLevel,
+      preferredProvider: user.preferredProvider,
+    });
+  } catch (error) {
+    console.error('Settings fetch error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
 
 export async function PUT(request: Request) {
   try {
@@ -28,6 +80,30 @@ export async function PUT(request: Request) {
         { error: 'Invalid input', details: parsed.error.issues },
         { status: 400 }
       );
+    }
+
+    // For test user or when DB is unavailable, store in memory
+    if (!isDatabaseAvailable() || session.user.email === 'test@pan.local') {
+      const existing = testUserSettings.get(session.user.id) || {
+        daemonName: session.user.daemonName || 'Pan',
+        daemonPersonality: session.user.daemonPersonality || 'supportive',
+        privacyLevel: session.user.privacyLevel || 'balanced',
+        preferredProvider: 'ollama',
+      };
+
+      const updated = {
+        daemonName: parsed.data.daemonName || existing.daemonName,
+        daemonPersonality: parsed.data.personality || existing.daemonPersonality,
+        privacyLevel: parsed.data.privacyLevel || existing.privacyLevel,
+        preferredProvider: parsed.data.provider || existing.preferredProvider,
+      };
+
+      testUserSettings.set(session.user.id, updated);
+
+      return NextResponse.json({
+        id: session.user.id,
+        ...updated,
+      });
     }
 
     const updates: Partial<typeof users.$inferInsert> = {};

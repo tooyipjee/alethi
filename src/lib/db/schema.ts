@@ -2,7 +2,7 @@ import { pgTable, text, timestamp, jsonb, uuid, pgEnum, vector } from 'drizzle-o
 
 export const daemonPersonalityEnum = pgEnum('daemon_personality', ['analytical', 'supportive', 'direct', 'creative']);
 export const privacyLevelEnum = pgEnum('privacy_level', ['minimal', 'balanced', 'open']);
-export const aiProviderEnum = pgEnum('ai_provider', ['openai', 'anthropic']);
+export const aiProviderEnum = pgEnum('ai_provider', ['openai', 'anthropic', 'ollama']);
 export const conversationTypeEnum = pgEnum('conversation_type', ['personal', 'negotiation']);
 export const messageRoleEnum = pgEnum('message_role', ['user', 'assistant', 'system']);
 export const negotiationStatusEnum = pgEnum('negotiation_status', ['pending', 'in_progress', 'completed', 'failed', 'cancelled']);
@@ -106,7 +106,7 @@ export const workContext = pgTable('work_context', {
   title: text('title').notNull(),
   summary: text('summary').notNull(),
   data: jsonb('data').notNull(),
-  embedding: vector('embedding', { dimensions: 1536 }),
+  embedding: vector('embedding', { dimensions: 768 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

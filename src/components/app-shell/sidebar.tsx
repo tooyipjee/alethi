@@ -18,6 +18,7 @@ export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname();
   const panName = user.daemonName || 'Pan';
   const [sources, setSources] = useState<string[]>([]);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     fetch('/api/integrations/google')
@@ -28,13 +29,25 @@ export function Sidebar({ user }: SidebarProps) {
       .catch(() => {});
   }, []);
 
-  return (
-    <div className="w-64 bg-neutral-950 border-r border-neutral-900 flex flex-col shrink-0">
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  const sidebarContent = (
+    <>
       {/* Header */}
       <div className="h-14 px-4 flex items-center justify-between border-b border-neutral-900 shrink-0">
         <span className="text-[15px] font-semibold">Pan</span>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <span className="w-2 h-2 bg-emerald-500 rounded-full" />
+          {/* Mobile close button */}
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="md:hidden ml-2 text-neutral-500 hover:text-white"
+          >
+            ✕
+          </button>
         </div>
       </div>
 
@@ -111,7 +124,37 @@ export function Sidebar({ user }: SidebarProps) {
           </button>
         </div>
       </div>
-    </div>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile menu button - fixed position */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="md:hidden fixed top-3 left-3 z-40 w-10 h-10 bg-neutral-900 border border-neutral-800 rounded-lg flex items-center justify-center"
+      >
+        <span className="text-[16px]">☰</span>
+      </button>
+
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex w-64 bg-neutral-950 border-r border-neutral-900 flex-col shrink-0">
+        {sidebarContent}
+      </div>
+
+      {/* Mobile sidebar overlay */}
+      {mobileOpen && (
+        <div className="md:hidden fixed inset-0 z-50">
+          <div 
+            className="absolute inset-0 bg-black/80"
+            onClick={() => setMobileOpen(false)}
+          />
+          <div className="absolute left-0 top-0 bottom-0 w-64 bg-neutral-950 flex flex-col">
+            {sidebarContent}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
