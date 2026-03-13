@@ -35,8 +35,8 @@ export const models = {
     fast: anthropic('claude-3-5-haiku-20241022'),
   },
   ollama: {
-    default: ollama('qwen3:1.7b'),
-    fast: ollama('qwen3:1.7b'),
+    default: ollama('gpt-oss:120b-cloud'),
+    fast: ollama('gpt-oss:120b-cloud'),
   },
 } as const;
 
