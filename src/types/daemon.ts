@@ -6,7 +6,7 @@ export type NegotiationStatus = 'pending' | 'in_progress' | 'completed' | 'faile
 
 export type PrivacyLevel = 'minimal' | 'balanced' | 'open';
 
-export type ContextSource = 'github' | 'notion' | 'linear' | 'slack' | 'calendar' | 'manual';
+export type ContextSource = 'github' | 'notion' | 'linear' | 'slack' | 'calendar' | 'gmail' | 'manual';
 
 export type ConversationType = 'personal' | 'negotiation';
 

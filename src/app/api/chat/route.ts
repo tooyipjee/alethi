@@ -1,6 +1,7 @@
 import { auth } from '@/lib/auth';
 import { streamDaemonChat } from '@/lib/ai/daemon';
-import { getMockWorkContext, getMockOtherUsers } from '@/lib/mock/work-context';
+import { getMockOtherUsers } from '@/lib/mock/work-context';
+import { getUserContexts } from '@/lib/integrations/context-store';
 import { runNegotiation } from '@/lib/negotiations/negotiate';
 import type { AIMessage, AIProvider } from '@/lib/ai/providers';
 
@@ -122,8 +123,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // Normal Pan chat with work context
-    const workContext = getMockWorkContext(userId);
+    // Get user's work context (real if synced, mock fallback)
+    const workContext = getUserContexts(userId);
 
     const daemonConfig = {
       name: daemonName,

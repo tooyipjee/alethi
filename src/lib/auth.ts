@@ -7,13 +7,13 @@ import { db, isDatabaseAvailable } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { storeTokens } from '@/lib/integrations/token-store';
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
 
-// Test user for local development without database
 const TEST_USER = {
   id: 'test-user-1',
   email: 'test@pan.local',
@@ -40,6 +40,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      authorization: {
+        params: {
+          scope: 'openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly',
+          access_type: 'offline',
+          prompt: 'consent',
+        },
+      },
     }),
     Credentials({
       name: 'credentials',
@@ -53,7 +60,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const { email, password } = parsed.data;
 
-        // Test mode: allow test@pan.local with any password
         if (email === 'test@pan.local' && password) {
           return {
             id: TEST_USER.id,
@@ -63,7 +69,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           };
         }
 
-        // If no database, only allow test user
         if (!isDatabaseAvailable()) {
           return null;
         }
@@ -84,9 +89,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id;
+      }
+      // Persist Google tokens from OAuth sign-in
+      if (account?.provider === 'google') {
+        token.googleAccessToken = account.access_token;
+        token.googleRefreshToken = account.refresh_token;
+        token.googleTokenExpiry = account.expires_at ? account.expires_at * 1000 : undefined;
+        
+        // Store in memory so server-side APIs can access them
+        if (token.id) {
+          storeTokens(token.id as string, {
+            googleAccessToken: account.access_token ?? undefined,
+            googleRefreshToken: account.refresh_token ?? undefined,
+            googleTokenExpiry: account.expires_at ? account.expires_at * 1000 : undefined,
+          });
+        }
       }
       return token;
     },
@@ -94,7 +114,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (token.id) {
         session.user.id = token.id as string;
         
-        // Test user
+        // Pass Google token availability to client
+        session.user.googleConnected = !!token.googleAccessToken;
+
         if (token.id === TEST_USER.id) {
           session.user.daemonName = TEST_USER.daemonName;
           session.user.daemonPersonality = TEST_USER.daemonPersonality;
@@ -103,7 +125,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return session;
         }
 
-        // Database user
         if (isDatabaseAvailable()) {
           const dbUser = await db.query.users.findFirst({
             where: eq(users.id, token.id as string),
@@ -122,6 +143,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 });
 
+// Helper to get Google access token from JWT (server-side only)
+export async function getGoogleToken(): Promise<string | null> {
+  const session = await auth();
+  if (!session) return null;
+  
+  // Access the raw JWT to get the token
+  // This is a workaround — in production you'd use a proper token refresh flow
+  return null; // We'll get it from the token store instead
+}
+
 declare module 'next-auth' {
   interface Session {
     user: {
@@ -133,6 +164,15 @@ declare module 'next-auth' {
       daemonPersonality?: string;
       privacyLevel?: string;
       preferredProvider?: string;
+      googleConnected?: boolean;
     };
+  }
+}
+
+declare module 'next-auth' {
+  interface JWT {
+    googleAccessToken?: string;
+    googleRefreshToken?: string;
+    googleTokenExpiry?: number;
   }
 }
