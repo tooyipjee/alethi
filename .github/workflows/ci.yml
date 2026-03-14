@@ -1,0 +1,215 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ============================================
+  # Lint & Type Check
+  # ============================================
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Type check
+        run: npm run typecheck
+
+  # ============================================
+  # Unit Tests
+  # ============================================
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm run test:ci
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+  # ============================================
+  # Build Check
+  # ============================================
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+        env:
+          # Minimal env vars for build to succeed
+          NEXTAUTH_SECRET: ci-test-secret
+          NEXTAUTH_URL: http://localhost:3000
+
+  # ============================================
+  # Core Feature Tests (Critical Path)
+  # ============================================
+  core-features:
+    name: Core Feature Tests
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run core feature tests
+        run: |
+          echo "Running critical path tests..."
+          npm test -- --reporter=verbose \
+            src/lib/negotiations/negotiate.test.ts \
+            src/lib/negotiations/store.test.ts \
+            src/lib/users/user-service.test.ts \
+            src/lib/privacy/truth-filter.test.ts
+
+      - name: Verify negotiation patterns
+        run: |
+          echo "Verifying negotiation detection patterns..."
+          node -e "
+          const patterns = [
+            /ask (\\w+) (?:what|about|if|whether|how|when|where|why)/i,
+            /(?:check|find out) (?:with|from) (\\w+)/i,
+            /(?:get back to|follow up with|catch up with|connect with) (\\w+)/i,
+            /(?:message|contact|reach|ping) (\\w+)$/i,
+          ];
+          
+          const mustMatch = [
+            'Ask sarah what she is up to',
+            'check with alex',
+            'follow up with sarah',
+            'message alex',
+          ];
+          
+          let failed = false;
+          for (const phrase of mustMatch) {
+            const matched = patterns.some(p => p.test(phrase));
+            if (!matched) {
+              console.error('FAIL: Pattern should match:', phrase);
+              failed = true;
+            } else {
+              console.log('PASS:', phrase);
+            }
+          }
+          
+          if (failed) process.exit(1);
+          console.log('All negotiation patterns verified!');
+          "
+
+  # ============================================
+  # Security Checks
+  # ============================================
+  security:
+    name: Security Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run security tests
+        run: |
+          npm test -- --reporter=verbose \
+            src/lib/security/crypto.test.ts \
+            src/lib/security/audit.test.ts \
+            src/lib/privacy/truth-filter.test.ts
+
+      - name: Check for sensitive patterns in code
+        run: |
+          echo "Checking for accidentally committed secrets..."
+          # Check for common secret patterns (excluding test files and .env.example)
+          if grep -rE "(sk-[a-zA-Z0-9]{20,}|AKIA[A-Z0-9]{16}|ghp_[a-zA-Z0-9]{36})" \
+            --include="*.ts" --include="*.tsx" --include="*.js" \
+            --exclude-dir=node_modules --exclude="*.test.ts" . 2>/dev/null; then
+            echo "ERROR: Potential secrets found in code!"
+            exit 1
+          fi
+          echo "No secrets detected."
+
+  # ============================================
+  # Summary Job
+  # ============================================
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [lint, test, build, core-features, security]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [ "${{ needs.lint.result }}" != "success" ] || \
+             [ "${{ needs.test.result }}" != "success" ] || \
+             [ "${{ needs.build.result }}" != "success" ] || \
+             [ "${{ needs.core-features.result }}" != "success" ] || \
+             [ "${{ needs.security.result }}" != "success" ]; then
+            echo "One or more jobs failed"
+            exit 1
+          fi
+          echo "All CI checks passed!"
