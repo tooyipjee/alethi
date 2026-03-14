@@ -1,4 +1,4 @@
-import type { NegotiationIntent, NegotiationStatus } from '@/types/daemon';
+import type { NegotiationIntent, NegotiationStatus, TruthPacket } from '@/types/daemon';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -13,6 +13,19 @@ export interface NegotiationMessage {
   createdAt: Date;
 }
 
+export interface SharedContext {
+  initiator: {
+    userId: string;
+    truthPacket: TruthPacket;
+    privacyLevel: string;
+  };
+  target: {
+    userId: string;
+    truthPacket: TruthPacket;
+    privacyLevel: string;
+  };
+}
+
 export interface StoredNegotiation {
   id: string;
   topic: string;
@@ -21,6 +34,7 @@ export interface StoredNegotiation {
   initiator: { id: string; name: string; daemonName: string };
   target: { id: string; name: string; daemonName: string };
   messages: NegotiationMessage[];
+  sharedContext?: SharedContext;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -118,6 +132,7 @@ export function addNegotiationMessage(id: string, message: NegotiationMessage) {
   if (existing) {
     existing.messages.push(message);
     existing.updatedAt = new Date();
+    saveToDisk(negotiations);
     notifyUpdate(existing);
   }
 }

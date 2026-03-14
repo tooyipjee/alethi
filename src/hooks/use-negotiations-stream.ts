@@ -12,6 +12,27 @@ interface NegotiationMessage {
   createdAt: string;
 }
 
+interface TruthPacket {
+  availability: string[];
+  workloadSummary: string;
+  relevantExpertise: string[];
+  currentFocus?: string;
+  lastActiveProject?: string;
+}
+
+interface SharedContext {
+  initiator: {
+    userId: string;
+    truthPacket: TruthPacket;
+    privacyLevel: string;
+  };
+  target: {
+    userId: string;
+    truthPacket: TruthPacket;
+    privacyLevel: string;
+  };
+}
+
 interface Negotiation {
   id: string;
   topic: string;
@@ -20,6 +41,7 @@ interface Negotiation {
   initiator: { id: string; name: string; daemonName: string };
   target: { id: string; name: string; daemonName: string };
   messages: NegotiationMessage[];
+  sharedContext?: SharedContext;
   isInitiator: boolean;
   createdAt: string;
   updatedAt: string;
