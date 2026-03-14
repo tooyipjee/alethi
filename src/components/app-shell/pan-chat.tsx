@@ -3,10 +3,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { ConsentDialog } from '@/components/pan-chat/consent-dialog';
+import type { NegotiationPreview } from '@/app/api/negotiations/preview/route';
 
 interface PanChatProps {
   panName: string;
   userName: string;
+  userId: string;
 }
 
 interface Message {
@@ -17,13 +20,51 @@ interface Message {
   error?: boolean;
 }
 
-export function PanChat({ panName, userName }: PanChatProps) {
+interface PendingNegotiation {
+  preview: NegotiationPreview;
+  originalMessage: string;
+  targetName: string;
+  topic: string;
+}
+
+export function PanChat({ panName, userName, userId }: PanChatProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
+  const [pendingNegotiation, setPendingNegotiation] = useState<PendingNegotiation | null>(null);
+  const [isNegotiating, setIsNegotiating] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Load messages from localStorage on mount
+  useEffect(() => {
+    const storageKey = `pan-chat-${userId}`;
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setMessages(parsed);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load chat history:', e);
+    }
+    setIsInitialized(true);
+  }, [userId]);
+
+  // Save messages to localStorage when they change
+  useEffect(() => {
+    if (!isInitialized) return;
+    const storageKey = `pan-chat-${userId}`;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(messages));
+    } catch (e) {
+      console.warn('Failed to save chat history:', e);
+    }
+  }, [messages, userId, isInitialized]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -34,6 +75,126 @@ export function PanChat({ panName, userName }: PanChatProps) {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Extract target name from a negotiation request message
+  const extractNegotiationTarget = useCallback((text: string): { targetName: string; topic: string } | null => {
+    // Patterns to match negotiation requests (must match chat API patterns)
+    const patterns: [RegExp, number][] = [
+      // Explicit Pan/daemon references
+      [/(?:talk|speak|reach out|message|contact|negotiate|coordinate|check) (?:to|with) (\w+)(?:'s)? (?:pan|daemon|luna|stella|atlas|mercury|nova)/i, 1],
+      [/(?:ask|tell|ping|sync with) (\w+)(?:'s)? (?:pan|daemon|team|luna|stella|nova)/i, 1],
+      // Meeting/scheduling
+      [/(?:schedule|set up|arrange|book) (?:a |the )?(?:meeting|call|review|sync|chat) with (\w+)/i, 1],
+      // Natural "talk to X about" phrases
+      [/(?:talk|speak|reach out|message) (?:to|with) (\w+) about/i, 1],
+      // Natural "ask X" phrases - catches "ask sarah what she's been up to"
+      [/ask (\w+) (?:what|about|if|whether|how|when|where|why)/i, 1],
+      // Check/find out from someone
+      [/(?:check|find out) (?:with|from) (\w+)/i, 1],
+      // Follow up patterns
+      [/(?:get back to|follow up with|catch up with|connect with) (\w+)/i, 1],
+      // Simple "message X" or "contact X"
+      [/(?:message|contact|reach|ping) (\w+)$/i, 1],
+    ];
+
+    for (const [pattern, groupIndex] of patterns) {
+      const match = text.match(pattern);
+      if (match?.[groupIndex]) {
+        return {
+          targetName: match[groupIndex].trim(),
+          topic: text,
+        };
+      }
+    }
+    return null;
+  }, []);
+
+  // Fetch preview for consent flow
+  const fetchNegotiationPreview = useCallback(async (targetName: string, topic: string, message: string): Promise<NegotiationPreview | null> => {
+    try {
+      const res = await fetch('/api/negotiations/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetName, topic, message }),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Run the actual negotiation after consent
+  const runNegotiationWithConsent = useCallback(async () => {
+    if (!pendingNegotiation) return;
+
+    setIsNegotiating(true);
+    const assistantId = crypto.randomUUID();
+
+    try {
+      // Add placeholder for response
+      setMessages(prev => [...prev, { 
+        id: assistantId, 
+        role: 'assistant', 
+        content: '',
+        isNegotiation: true,
+      }]);
+
+      // Call the chat API which will run the negotiation
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: messages.map(m => ({
+            role: m.role,
+            content: m.content,
+          })).concat([{ role: 'user', content: pendingNegotiation.originalMessage }]),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Sync failed');
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response stream');
+
+      const decoder = new TextDecoder();
+      let fullContent = '';
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        fullContent += chunk;
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === assistantId ? { ...m, content: m.content + chunk } : m
+          )
+        );
+      }
+
+      toast.success('Sync complete! Check Pan Syncs to see the full conversation.', {
+        action: {
+          label: 'View',
+          onClick: () => window.location.href = '/spectator',
+        },
+      });
+    } catch (error) {
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === assistantId 
+            ? { ...m, content: 'Sorry, the sync failed. Please try again.', error: true } 
+            : m
+        )
+      );
+      toast.error('Sync failed');
+    } finally {
+      setIsNegotiating(false);
+      setPendingNegotiation(null);
+    }
+  }, [pendingNegotiation, messages]);
 
   const handleSubmit = useCallback(async (e?: React.FormEvent, overrideMessage?: string) => {
     e?.preventDefault();
@@ -51,12 +212,35 @@ export function PanChat({ panName, userName }: PanChatProps) {
     const allMessages = [...messages, userMessage];
     setMessages(allMessages);
     setInput('');
-    setIsLoading(true);
-
-    const assistantId = crypto.randomUUID();
 
     // Check if this looks like a negotiation request
-    const isNegotiationRequest = /(?:talk|speak|message|contact|negotiate|coordinate|check|ask|tell|ping|sync|schedule|set up|arrange|book).+(?:pan|daemon|meeting|call|review|sync|chat)/i.test(messageText);
+    const negotiationTarget = extractNegotiationTarget(messageText);
+    
+    if (negotiationTarget) {
+      // Fetch preview for consent flow
+      setIsLoading(true);
+      const preview = await fetchNegotiationPreview(
+        negotiationTarget.targetName, 
+        negotiationTarget.topic, 
+        messageText
+      );
+      setIsLoading(false);
+
+      if (preview) {
+        // Show consent dialog instead of running negotiation
+        setPendingNegotiation({
+          preview,
+          originalMessage: messageText,
+          targetName: negotiationTarget.targetName,
+          topic: negotiationTarget.topic,
+        });
+        return;
+      }
+    }
+
+    // Not a negotiation or preview failed - proceed normally
+    setIsLoading(true);
+    const assistantId = crypto.randomUUID();
 
     try {
       const response = await fetch('/api/chat', {
@@ -82,33 +266,20 @@ export function PanChat({ panName, userName }: PanChatProps) {
         id: assistantId, 
         role: 'assistant', 
         content: '',
-        isNegotiation: isNegotiationRequest,
       }]);
 
       const decoder = new TextDecoder();
-      let fullContent = '';
       
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const chunk = decoder.decode(value);
-        fullContent += chunk;
         setMessages(prev =>
           prev.map(m =>
             m.id === assistantId ? { ...m, content: m.content + chunk } : m
           )
         );
-      }
-
-      // Show toast if this was a negotiation
-      if (isNegotiationRequest && fullContent.includes('negotiat')) {
-        toast.success('Negotiation started! Check Pan Channels to follow along.', {
-          action: {
-            label: 'View',
-            onClick: () => window.location.href = '/spectator',
-          },
-        });
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Something went wrong';
@@ -123,7 +294,21 @@ export function PanChat({ panName, userName }: PanChatProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, messages]);
+  }, [input, isLoading, messages, extractNegotiationTarget, fetchNegotiationPreview]);
+
+  const handleConsentApprove = useCallback(() => {
+    runNegotiationWithConsent();
+  }, [runNegotiationWithConsent]);
+
+  const handleConsentCancel = useCallback(() => {
+    // Add a message indicating cancellation
+    setMessages(prev => [...prev, {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: `Okay, I won't contact ${pendingNegotiation?.preview.target.name}'s ${pendingNegotiation?.preview.target.daemonName}. Let me know if you change your mind.`,
+    }]);
+    setPendingNegotiation(null);
+  }, [pendingNegotiation]);
 
   const handleRetry = () => {
     if (retryMessage) {
@@ -277,6 +462,16 @@ export function PanChat({ panName, userName }: PanChatProps) {
           </form>
         </div>
       </div>
+
+      {/* Consent Dialog */}
+      {pendingNegotiation && (
+        <ConsentDialog
+          preview={pendingNegotiation.preview}
+          onApprove={handleConsentApprove}
+          onCancel={handleConsentCancel}
+          isLoading={isNegotiating}
+        />
+      )}
     </div>
   );
 }
