@@ -86,12 +86,23 @@ export function StartNegotiation({ onSuccess, initialTarget }: StartNegotiationP
   };
 
   if (!open) {
+    // Smaller button when used inline with initialTarget
+    if (initialTarget) {
+      return (
+        <button
+          onClick={() => setOpen(true)}
+          className="px-2 py-1 text-[11px] text-neutral-400 hover:text-white hover:bg-neutral-800 rounded transition-colors"
+        >
+          Message
+        </button>
+      );
+    }
     return (
       <button
         onClick={() => setOpen(true)}
         className="px-4 py-2 bg-white text-black rounded-lg text-[13px] font-semibold hover:bg-neutral-100 transition-colors"
       >
-        New Negotiation
+        + New
       </button>
     );
   }

@@ -19,6 +19,31 @@ export interface PanUser {
 // In-memory user registry for when DB is unavailable or for demo mode
 const userRegistry = new Map<string, PanUser>();
 
+// Pre-register demo users so they can always be found
+const DEMO_USERS: PanUser[] = [
+  {
+    id: 'test-user-1',
+    name: 'Alex Chen',
+    email: 'test@pan.local',
+    daemonName: 'Pan',
+    daemonPersonality: 'supportive',
+    privacyLevel: 'balanced',
+  },
+  {
+    id: 'test-user-2',
+    name: 'Sarah Kim',
+    email: 'demo@pan.local',
+    daemonName: 'Luna',
+    daemonPersonality: 'analytical',
+    privacyLevel: 'balanced',
+  },
+];
+
+// Initialize with demo users
+for (const user of DEMO_USERS) {
+  userRegistry.set(user.id, user);
+}
+
 export function registerUser(user: PanUser): void {
   userRegistry.set(user.id, user);
 }

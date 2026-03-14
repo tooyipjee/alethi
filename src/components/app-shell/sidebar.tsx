@@ -88,15 +88,22 @@ export function Sidebar({ user }: SidebarProps) {
 
         <div className="px-3 mb-4">
           <p className="text-[11px] text-neutral-500 font-medium uppercase tracking-wider px-2 mb-2">
-            Pan Channels
+            Conversations
           </p>
+          <NavItem 
+            href="/messages" 
+            active={pathname === '/messages'} 
+            icon="💬"
+            badge={negotiationCount > 0 ? negotiationCount : undefined}
+          >
+            Messages
+          </NavItem>
           <NavItem 
             href="/spectator" 
             active={pathname === '/spectator'} 
             icon="◎"
-            badge={negotiationCount > 0 ? negotiationCount : undefined}
           >
-            Negotiations
+            All Negotiations
           </NavItem>
         </div>
 
