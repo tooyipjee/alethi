@@ -15,10 +15,21 @@ interface ClientMessage {
 // Detect if the user wants their daemon to talk to another user's daemon
 function detectNegotiationRequest(message: string, excludeUserId: string): { target: string; topic: string } | null {
   const patterns = [
-    /(?:talk|speak|reach out|message|contact|negotiate|coordinate|check) (?:to|with) (\w+)(?:'s)? (?:pan|daemon|luna|stella|atlas|mercury)/i,
-    /(?:ask|tell|ping|sync with) (\w+)(?:'s)? (?:pan|daemon|team|luna|stella)/i,
+    // Explicit Pan/daemon references
+    /(?:talk|speak|reach out|message|contact|negotiate|coordinate|check) (?:to|with) (\w+)(?:'s)? (?:pan|daemon|luna|stella|atlas|mercury|nova)/i,
+    /(?:ask|tell|ping|sync with) (\w+)(?:'s)? (?:pan|daemon|team|luna|stella|nova)/i,
+    // Meeting/scheduling
     /(?:schedule|set up|arrange|book) (?:a |the )?(?:meeting|call|review|sync|chat) with (\w+)/i,
+    // Natural "talk to X about" phrases
     /(?:talk|speak|reach out|message) (?:to|with) (\w+) about/i,
+    // Natural "ask X" phrases - catches "ask sarah what she's been up to"
+    /ask (\w+) (?:what|about|if|whether|how|when|where|why)/i,
+    // Check/find out from someone
+    /(?:check|find out) (?:with|from) (\w+)/i,
+    // Follow up patterns
+    /(?:get back to|follow up with|catch up with|connect with) (\w+)/i,
+    // Simple "message X" or "contact X"
+    /(?:message|contact|reach|ping) (\w+)$/i,
   ];
 
   for (const pattern of patterns) {
