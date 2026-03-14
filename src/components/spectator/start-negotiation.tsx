@@ -50,7 +50,7 @@ export function StartNegotiation({ onSuccess, initialTarget }: StartNegotiationP
     e.preventDefault();
     
     if (!selectedUser) {
-      toast.error('Please select a user to negotiate with');
+      toast.error('Please select a user to sync with');
       return;
     }
 
@@ -62,17 +62,17 @@ export function StartNegotiation({ onSuccess, initialTarget }: StartNegotiationP
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetName: selectedUser.name,
-          topic: topic || `Negotiation with ${selectedUser.name}`,
+          topic: topic || `Sync with ${selectedUser.name}`,
           message: message || `I'd like to coordinate with ${selectedUser.name}`,
         }),
       });
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Failed to start negotiation');
+        throw new Error(data.error || 'Failed to start sync');
       }
 
-      toast.success(`Started negotiation with ${selectedUser.name}'s Pan!`);
+      toast.success(`Started sync with ${selectedUser.name}'s Pan!`);
       setOpen(false);
       setSelectedUser(null);
       setTopic('');
@@ -111,15 +111,15 @@ export function StartNegotiation({ onSuccess, initialTarget }: StartNegotiationP
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/80" onClick={() => setOpen(false)} />
       <div className="relative bg-neutral-950 border border-neutral-800 rounded-xl w-full max-w-md p-6">
-        <h2 className="text-[18px] font-semibold mb-1">Start a Negotiation</h2>
+        <h2 className="text-[18px] font-semibold mb-1">Start a Sync</h2>
         <p className="text-[13px] text-neutral-500 mb-6">
-          Your Pan will negotiate with another user's Pan on your behalf.
+          Your Pan will sync with another user's Pan on your behalf.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* User Selection */}
           <div className="space-y-2">
-            <label className="text-[13px] text-neutral-400">Who to negotiate with</label>
+            <label className="text-[13px] text-neutral-400">Who to sync with</label>
             {selectedUser ? (
               <div className="flex items-center justify-between p-3 bg-neutral-900 rounded-lg border border-neutral-800">
                 <div className="flex items-center gap-3">
@@ -213,7 +213,7 @@ export function StartNegotiation({ onSuccess, initialTarget }: StartNegotiationP
               disabled={isLoading || !selectedUser}
               className="px-4 py-2 bg-white text-black rounded-lg text-[13px] font-semibold hover:bg-neutral-100 transition-colors disabled:opacity-50"
             >
-              {isLoading ? 'Starting...' : 'Start Negotiation'}
+              {isLoading ? 'Starting...' : 'Start Sync'}
             </button>
           </div>
         </form>

@@ -103,7 +103,7 @@ export function Sidebar({ user }: SidebarProps) {
             active={pathname === '/spectator'} 
             icon="◎"
           >
-            All Negotiations
+            Pan Syncs
           </NavItem>
         </div>
 

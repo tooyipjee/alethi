@@ -41,9 +41,9 @@ export function NegotiationList({ negotiations, selectedId, onSelect }: Negotiat
     return (
       <Card className="bg-slate-900/50 border-slate-800">
         <CardContent className="p-8 text-center">
-          <p className="text-slate-400">No negotiations yet</p>
+          <p className="text-slate-400">No syncs yet</p>
           <p className="text-sm text-slate-500 mt-1">
-            Start a negotiation to see your Dæmons in action
+            Start a sync to see your Pans in action
           </p>
         </CardContent>
       </Card>
