@@ -191,9 +191,14 @@ export default function MessagesPage() {
                     </p>
                     <div className="space-y-1">
                       {usersWithoutThreads.map(user => (
-                        <div
+                        <button
                           key={user.id}
-                          className="flex items-center gap-3 px-3 py-2"
+                          onClick={() => setSelectedUserId(user.id)}
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                            selectedUserId === user.id
+                              ? 'bg-neutral-900'
+                              : 'hover:bg-neutral-950'
+                          }`}
                         >
                           <div className="w-8 h-8 rounded-lg bg-neutral-900 flex items-center justify-center text-[12px] font-medium shrink-0">
                             {user.name.charAt(0)}
@@ -202,11 +207,7 @@ export default function MessagesPage() {
                             <p className="text-[12px] text-neutral-400 truncate">{user.name}</p>
                             <p className="text-[10px] text-neutral-600 truncate">{user.daemonName}</p>
                           </div>
-                          <StartNegotiation 
-                            onSuccess={fetchUsers} 
-                            initialTarget={user}
-                          />
-                        </div>
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -290,6 +291,46 @@ export default function MessagesPage() {
                 </div>
               </div>
             </>
+          ) : selectedUserId ? (
+            // User selected but no conversation yet
+            (() => {
+              const selectedUser = users.find(u => u.id === selectedUserId);
+              if (!selectedUser) return null;
+              return (
+                <>
+                  <div className="h-14 px-6 flex items-center border-b border-neutral-900 shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-neutral-800 flex items-center justify-center text-[14px] font-medium">
+                        {selectedUser.name.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="text-[14px] font-medium">{selectedUser.name}</p>
+                        <p className="text-[11px] text-neutral-500">
+                          {selectedUser.daemonName} represents them
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="w-16 h-16 rounded-full bg-neutral-900 flex items-center justify-center mx-auto mb-4">
+                        <span className="text-2xl">{selectedUser.name.charAt(0)}</span>
+                      </div>
+                      <p className="text-[14px] text-neutral-400 mb-2">
+                        No conversations with {selectedUser.name} yet
+                      </p>
+                      <p className="text-[12px] text-neutral-600 mb-4">
+                        Start a negotiation to have your daemons coordinate
+                      </p>
+                      <StartNegotiation 
+                        onSuccess={fetchUsers} 
+                        initialTarget={selectedUser}
+                      />
+                    </div>
+                  </div>
+                </>
+              );
+            })()
           ) : (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
