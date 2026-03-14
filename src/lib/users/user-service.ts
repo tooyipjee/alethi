@@ -25,7 +25,7 @@ const DEMO_USERS: PanUser[] = [
     id: 'test-user-1',
     name: 'Alex Chen',
     email: 'test@pan.local',
-    daemonName: 'Pan',
+    daemonName: 'Nova',
     daemonPersonality: 'supportive',
     privacyLevel: 'balanced',
   },

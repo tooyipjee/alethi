@@ -133,10 +133,13 @@ interface TargetUser {
 }
 
 async function findTargetUser(targetPersonName: string, excludeUserId: string): Promise<TargetUser | null> {
+  console.log(`[NEGOTIATE] Looking for user: "${targetPersonName}" (excluding: ${excludeUserId})`);
+  
   // First try to find a real user
   const realUser = await findUserByName(targetPersonName, excludeUserId);
   
   if (realUser) {
+    console.log(`[NEGOTIATE] Found REAL user: ${realUser.name} (${realUser.id}) with daemon ${realUser.daemonName}`);
     return {
       id: realUser.id,
       name: realUser.name,
@@ -148,12 +151,14 @@ async function findTargetUser(targetPersonName: string, excludeUserId: string): 
   }
 
   // Fall back to mock users for demo/testing
+  console.log(`[NEGOTIATE] No real user found, falling back to mock users`);
   const mockUsers = getMockOtherUsers();
   const mockUser = mockUsers.find(u =>
     u.name.toLowerCase().includes(targetPersonName.toLowerCase())
   ) || mockUsers[0];
 
   if (mockUser) {
+    console.log(`[NEGOTIATE] Using MOCK user: ${mockUser.name} (${mockUser.id}) with daemon ${mockUser.daemonName}`);
     // Build TruthPacket from simplified mock context
     const mockTruthPacket: TruthPacket = {
       availability: mockUser.workContext
@@ -175,18 +180,32 @@ async function findTargetUser(targetPersonName: string, excludeUserId: string): 
     };
   }
 
+  console.log(`[NEGOTIATE] No user found for "${targetPersonName}"`);
   return null;
 }
 
 export async function runNegotiation(params: NegotiateParams): Promise<StoredNegotiation> {
   const { userId, userName, userPanName, targetPersonName, topic, userMessage } = params;
 
+  console.log(`[NEGOTIATE] Starting negotiation:`, {
+    initiator: { id: userId, name: userName, daemon: userPanName },
+    targetQuery: targetPersonName,
+    topic,
+  });
+
   // Find target user (real or mock)
   const target = await findTargetUser(targetPersonName, userId);
   
   if (!target) {
+    console.log(`[NEGOTIATE] FAILED: Could not find user "${targetPersonName}"`);
     throw new Error(`Could not find user "${targetPersonName}"`);
   }
+  
+  console.log(`[NEGOTIATE] Target resolved:`, {
+    id: target.id,
+    name: target.name,
+    daemon: target.daemonName,
+  });
 
   const provider = getProvider();
   const myTruth = buildUserTruthPacket(userId, 'balanced');

@@ -40,6 +40,7 @@ export function addUpdateListener(listener: UpdateListener) {
 
 function notifyUpdate(negotiation: StoredNegotiation) {
   const userIds = [negotiation.initiator.id, negotiation.target.id];
+  console.log(`[STORE] Notifying users of update:`, userIds);
   for (const listener of listeners) {
     try {
       listener(userIds);
@@ -50,6 +51,12 @@ function notifyUpdate(negotiation: StoredNegotiation) {
 }
 
 export function saveNegotiation(neg: StoredNegotiation) {
+  console.log(`[STORE] Saving negotiation:`, {
+    id: neg.id,
+    initiator: { id: neg.initiator.id, name: neg.initiator.name },
+    target: { id: neg.target.id, name: neg.target.name },
+    status: neg.status,
+  });
   negotiations.set(neg.id, neg);
   notifyUpdate(neg);
 }

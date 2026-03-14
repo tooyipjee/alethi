@@ -30,7 +30,7 @@ const TEST_USERS: Record<string, {
     email: 'test@pan.local',
     name: 'Alex Chen',
     image: undefined,
-    daemonName: 'Pan',
+    daemonName: 'Nova',
     daemonPersonality: 'supportive',
     privacyLevel: 'balanced',
     preferredProvider: 'ollama',

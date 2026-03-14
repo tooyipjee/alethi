@@ -78,7 +78,11 @@ export async function POST(request: Request) {
 
     // Check if this is a negotiation request
     const negotiationReq = detectNegotiationRequest(lastMessage, userId);
+    console.log(`[CHAT] Message from ${session.user.name} (${userId}):`, lastMessage.slice(0, 100));
+    console.log(`[CHAT] Negotiation detected:`, negotiationReq);
+    
     if (negotiationReq) {
+      console.log(`[CHAT] Starting negotiation with target: "${negotiationReq.target}"`);
       try {
         const result = await runNegotiation({
           userId,
