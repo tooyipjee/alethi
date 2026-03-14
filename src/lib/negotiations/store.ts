@@ -1,4 +1,6 @@
 import type { NegotiationIntent, NegotiationStatus } from '@/types/daemon';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
 
 export interface NegotiationMessage {
   id: string;
@@ -23,8 +25,47 @@ export interface StoredNegotiation {
   updatedAt: Date;
 }
 
-// In-memory store for negotiations (no DB required)
-const negotiations = new Map<string, StoredNegotiation>();
+// File-based persistence for dev mode (survives hot reloads)
+const CACHE_DIR = join(process.cwd(), '.cache');
+const STORE_FILE = join(CACHE_DIR, 'negotiations.json');
+
+function loadFromDisk(): Map<string, StoredNegotiation> {
+  try {
+    if (existsSync(STORE_FILE)) {
+      const data = JSON.parse(readFileSync(STORE_FILE, 'utf-8'));
+      const map = new Map<string, StoredNegotiation>();
+      for (const neg of data) {
+        // Restore Date objects
+        neg.createdAt = new Date(neg.createdAt);
+        neg.updatedAt = new Date(neg.updatedAt);
+        neg.messages = neg.messages.map((m: NegotiationMessage) => ({
+          ...m,
+          createdAt: new Date(m.createdAt),
+        }));
+        map.set(neg.id, neg);
+      }
+      console.log(`[STORE] Loaded ${map.size} negotiations from disk`);
+      return map;
+    }
+  } catch (err) {
+    console.error('[STORE] Failed to load from disk:', err);
+  }
+  return new Map();
+}
+
+function saveToDisk(negotiations: Map<string, StoredNegotiation>) {
+  try {
+    if (!existsSync(CACHE_DIR)) {
+      mkdirSync(CACHE_DIR, { recursive: true });
+    }
+    writeFileSync(STORE_FILE, JSON.stringify(Array.from(negotiations.values()), null, 2));
+  } catch (err) {
+    console.error('[STORE] Failed to save to disk:', err);
+  }
+}
+
+// In-memory store for negotiations (loaded from disk on startup)
+const negotiations = loadFromDisk();
 
 // Listeners for real-time updates
 type UpdateListener = (userIds: string[]) => void;
@@ -58,6 +99,7 @@ export function saveNegotiation(neg: StoredNegotiation) {
     status: neg.status,
   });
   negotiations.set(neg.id, neg);
+  saveToDisk(negotiations);
   notifyUpdate(neg);
 }
 
@@ -66,6 +108,7 @@ export function updateNegotiation(id: string, updates: Partial<StoredNegotiation
   if (existing) {
     const updated = { ...existing, ...updates, updatedAt: new Date() };
     negotiations.set(id, updated);
+    saveToDisk(negotiations);
     notifyUpdate(updated);
   }
 }
