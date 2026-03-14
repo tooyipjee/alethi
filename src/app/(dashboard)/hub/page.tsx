@@ -12,7 +12,8 @@ export default async function HubPage() {
   return (
     <PanChat 
       panName={session.user.daemonName || 'Pan'} 
-      userName={session.user.name || 'there'} 
+      userName={session.user.name || 'there'}
+      userId={session.user.id}
     />
   );
 }
