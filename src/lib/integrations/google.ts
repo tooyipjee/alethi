@@ -2,6 +2,10 @@ import type { WorkContext } from '@/types/daemon';
 
 const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 
+export function isDemoMode(): boolean {
+  return process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+}
+
 export async function refreshGoogleToken(refreshToken: string): Promise<{ accessToken: string; expiresAt: number }> {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -280,6 +284,15 @@ export interface GoogleSyncResult {
 }
 
 export async function syncGoogleContext(userId: string, accessToken: string): Promise<GoogleSyncResult> {
+  if (isDemoMode()) {
+    console.log('[GOOGLE] Demo mode enabled - skipping real sync');
+    return {
+      emailCount: 0,
+      eventCount: 0,
+      contexts: [],
+    };
+  }
+
   const [emails, events] = await Promise.all([
     fetchGmail(accessToken),
     fetchCalendar(accessToken),
