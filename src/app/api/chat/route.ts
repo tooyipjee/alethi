@@ -1,8 +1,9 @@
 import { auth } from '@/lib/auth';
 import { streamDaemonChat } from '@/lib/ai/daemon';
-import { getMockOtherUsers } from '@/lib/mock/work-context';
 import { searchContexts } from '@/lib/integrations/context-store';
 import { runNegotiation } from '@/lib/negotiations/negotiate';
+import { getAllRegisteredUsers } from '@/lib/users/user-service';
+import { getMockOtherUsers } from '@/lib/mock/work-context';
 import type { AIMessage, AIProvider } from '@/lib/ai/providers';
 
 interface ClientMessage {
@@ -11,11 +12,11 @@ interface ClientMessage {
   content: string;
 }
 
-// Detect if the user wants Pan to talk to another Pan
-function detectNegotiationRequest(message: string): { target: string; topic: string } | null {
+// Detect if the user wants their daemon to talk to another user's daemon
+function detectNegotiationRequest(message: string, excludeUserId: string): { target: string; topic: string } | null {
   const patterns = [
-    /(?:talk|speak|reach out|message|contact|negotiate|coordinate|check) (?:to|with) (\w+)(?:'s)? (?:pan|daemon)/i,
-    /(?:ask|tell|ping|sync with) (\w+)(?:'s)? (?:pan|daemon|team)/i,
+    /(?:talk|speak|reach out|message|contact|negotiate|coordinate|check) (?:to|with) (\w+)(?:'s)? (?:pan|daemon|luna|stella|atlas|mercury)/i,
+    /(?:ask|tell|ping|sync with) (\w+)(?:'s)? (?:pan|daemon|team|luna|stella)/i,
     /(?:schedule|set up|arrange|book) (?:a |the )?(?:meeting|call|review|sync|chat) with (\w+)/i,
     /(?:talk|speak|reach out|message) (?:to|with) (\w+) about/i,
   ];
@@ -23,13 +24,27 @@ function detectNegotiationRequest(message: string): { target: string; topic: str
   for (const pattern of patterns) {
     const match = message.match(pattern);
     if (match) {
-      const targetName = match[1];
-      const otherUsers = getMockOtherUsers();
-      const found = otherUsers.find(u =>
-        u.name.toLowerCase().includes(targetName.toLowerCase())
+      const targetName = match[1].toLowerCase();
+      
+      // First check registered users (real users including demo users)
+      const registeredUsers = getAllRegisteredUsers();
+      const realUser = registeredUsers.find(u =>
+        u.id !== excludeUserId && 
+        (u.name.toLowerCase().includes(targetName) || 
+         u.daemonName.toLowerCase().includes(targetName))
       );
-      if (found) {
-        return { target: found.name, topic: message };
+      if (realUser) {
+        return { target: realUser.name, topic: message };
+      }
+      
+      // Fall back to mock users for testing
+      const mockUsers = getMockOtherUsers();
+      const mockUser = mockUsers.find(u =>
+        u.name.toLowerCase().includes(targetName) ||
+        u.daemonName.toLowerCase().includes(targetName)
+      );
+      if (mockUser) {
+        return { target: mockUser.name, topic: message };
       }
     }
   }
@@ -62,7 +77,7 @@ export async function POST(request: Request) {
     const lastMessage = chatMessages[chatMessages.length - 1]?.content || '';
 
     // Check if this is a negotiation request
-    const negotiationReq = detectNegotiationRequest(lastMessage);
+    const negotiationReq = detectNegotiationRequest(lastMessage, userId);
     if (negotiationReq) {
       try {
         const result = await runNegotiation({
