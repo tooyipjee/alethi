@@ -1,15 +1,52 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useNegotiationsStream } from '@/hooks/use-negotiations-stream';
 import { StartNegotiation } from '@/components/spectator/start-negotiation';
+
+function formatTime(date: string | Date) {
+  const d = new Date(date);
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function formatDate(date: string | Date) {
+  const d = new Date(date);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const isYesterday = new Date(now.getTime() - 86400000).toDateString() === d.toDateString();
+  
+  if (isToday) return 'Today';
+  if (isYesterday) return 'Yesterday';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
 interface PanUser {
   id: string;
   name: string;
   daemonName: string;
   image?: string;
+}
+
+interface TruthPacket {
+  availability: string[];
+  workloadSummary: string;
+  relevantExpertise: string[];
+  currentFocus?: string;
+  lastActiveProject?: string;
+}
+
+interface SharedContext {
+  initiator: {
+    userId: string;
+    truthPacket: TruthPacket;
+    privacyLevel: string;
+  };
+  target: {
+    userId: string;
+    truthPacket: TruthPacket;
+    privacyLevel: string;
+  };
 }
 
 interface ConversationThread {
@@ -29,10 +66,127 @@ interface ConversationThread {
       intent: string;
       content: string;
       isFromMe: boolean;
+      createdAt: string;
     }>;
+    sharedContext?: SharedContext;
     createdAt: string;
   }>;
   lastActivity: Date;
+}
+
+function TypingIndicator({ name }: { name: string }) {
+  return (
+    <div className="flex items-center gap-2 px-4 py-2">
+      <div className="flex gap-1">
+        <span className="w-1.5 h-1.5 bg-neutral-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+        <span className="w-1.5 h-1.5 bg-neutral-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+        <span className="w-1.5 h-1.5 bg-neutral-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+      </div>
+      <span className="text-[11px] text-neutral-500">{name} is typing...</span>
+    </div>
+  );
+}
+
+function ChatMessage({ 
+  message, 
+  showAvatar,
+  isFirstInGroup,
+  fromPanName,
+  isFromMe
+}: { 
+  message: {
+    content: string;
+    intent: string;
+    createdAt: string;
+  };
+  showAvatar: boolean;
+  isFirstInGroup: boolean;
+  fromPanName: string;
+  isFromMe: boolean;
+}) {
+  const avatarColor = isFromMe ? 'bg-blue-600' : 'bg-purple-600';
+  const initial = fromPanName.charAt(0).toUpperCase();
+
+  const intentColors: Record<string, string> = {
+    accept: 'text-emerald-400',
+    decline: 'text-red-400',
+    propose: 'text-blue-400',
+    counter: 'text-amber-400',
+    request: 'text-neutral-400',
+  };
+
+  return (
+    <div className={`flex gap-3 px-4 hover:bg-neutral-900/30 ${isFirstInGroup ? 'pt-3' : 'pt-0.5'}`}>
+      {showAvatar ? (
+        <div className={`w-9 h-9 rounded-full ${avatarColor} flex items-center justify-center shrink-0`}>
+          <span className="text-[13px] font-semibold text-white">{initial}</span>
+        </div>
+      ) : (
+        <div className="w-9 shrink-0" />
+      )}
+      <div className="flex-1 min-w-0">
+        {isFirstInGroup && (
+          <div className="flex items-baseline gap-2 mb-0.5">
+            <span className="text-[13px] font-semibold text-white">{fromPanName}</span>
+            <span className="text-[10px] text-neutral-600">{formatTime(message.createdAt)}</span>
+          </div>
+        )}
+        <div className="text-[13px] text-neutral-200 leading-relaxed">
+          <span className={`text-[10px] ${intentColors[message.intent] || 'text-neutral-400'} mr-1`}>
+            [{message.intent}]
+          </span>
+          {message.content}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SharedContextDisplay({ 
+  sharedContext, 
+  isInitiator, 
+  theirName 
+}: { 
+  sharedContext: SharedContext; 
+  isInitiator: boolean;
+  theirName: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const myContext = isInitiator ? sharedContext.initiator : sharedContext.target;
+  const theirContext = isInitiator ? sharedContext.target : sharedContext.initiator;
+
+  return (
+    <div className="mx-4 mt-2 p-2 bg-neutral-900/50 rounded border border-neutral-800">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between text-left"
+      >
+        <span className="text-[11px] text-neutral-500">Context shared</span>
+        <span className="text-[10px] text-neutral-600">{expanded ? '▼' : '▶'}</span>
+      </button>
+      
+      {expanded && (
+        <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
+          <div className="p-1.5 bg-neutral-950 rounded">
+            <p className="text-neutral-500 mb-1">You ({myContext.privacyLevel})</p>
+            <ul className="text-neutral-600 space-y-0.5">
+              {myContext.truthPacket.availability.length > 0 && <li>• Availability</li>}
+              {myContext.truthPacket.workloadSummary && <li>• Workload</li>}
+              {myContext.truthPacket.relevantExpertise.length > 0 && <li>• Expertise</li>}
+            </ul>
+          </div>
+          <div className="p-1.5 bg-neutral-950 rounded">
+            <p className="text-neutral-500 mb-1">{theirName} ({theirContext.privacyLevel})</p>
+            <ul className="text-neutral-600 space-y-0.5">
+              {theirContext.truthPacket.availability.length > 0 && <li>• Availability</li>}
+              {theirContext.truthPacket.workloadSummary && <li>• Workload</li>}
+              {theirContext.truthPacket.relevantExpertise.length > 0 && <li>• Expertise</li>}
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function MessagesPage() {
@@ -41,30 +195,26 @@ export default function MessagesPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [users, setUsers] = useState<PanUser[]>([]);
   const [fallbackNegotiations, setFallbackNegotiations] = useState<typeof streamNegotiations>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Use stream negotiations if available, otherwise use fallback
   const negotiations = streamNegotiations.length > 0 ? streamNegotiations : fallbackNegotiations;
 
-  // Fallback: fetch negotiations directly if SSE doesn't work
   const fetchNegotiations = useCallback(async () => {
     try {
       const res = await fetch('/api/negotiations');
       if (res.ok) {
         const data = await res.json();
-        console.log('[Messages] Fetched negotiations:', data.negotiations?.length || 0);
         if (data.negotiations) {
           setFallbackNegotiations(data.negotiations);
         }
       }
-    } catch (err) {
-      console.error('[Messages] Failed to fetch negotiations:', err);
+    } catch {
+      // ignore
     }
   }, []);
 
-  // Fetch on mount and when stream is disconnected
   useEffect(() => {
     fetchNegotiations();
-    // Also poll every 5 seconds as backup
     const interval = setInterval(fetchNegotiations, 5000);
     return () => clearInterval(interval);
   }, [fetchNegotiations]);
@@ -83,7 +233,7 @@ export default function MessagesPage() {
     fetchUsers();
   }, [fetchUsers]);
 
-  // Group negotiations by the other user (like DM threads)
+  // Group negotiations by the other user
   const threads: ConversationThread[] = [];
   const threadMap = new Map<string, ConversationThread>();
 
@@ -121,7 +271,9 @@ export default function MessagesPage() {
         intent: m.intent,
         content: m.content,
         isFromMe: m.fromUserId === session?.user?.id,
+        createdAt: m.createdAt,
       })),
+      sharedContext: n.sharedContext,
       createdAt: n.createdAt,
     });
 
@@ -131,191 +283,203 @@ export default function MessagesPage() {
     }
   }
 
-  // Sort threads by last activity
   threads.sort((a, b) => b.lastActivity.getTime() - a.lastActivity.getTime());
-
   const selectedThread = selectedUserId ? threadMap.get(selectedUserId) : null;
-
-  // Find users we haven't talked to yet
   const usersWithoutThreads = users.filter(u => !threadMap.has(u.id));
 
+  // Auto-scroll to bottom
+  useEffect(() => {
+    if (selectedThread && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [selectedThread?.negotiations.flatMap(n => n.messages).length]);
+
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0 bg-neutral-950">
       {/* Header */}
-      <div className="h-14 px-6 md:px-6 pl-16 md:pl-6 flex items-center justify-between border-b border-neutral-900 bg-black shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-neutral-800 flex items-center justify-center">
-            <span className="text-[14px]">💬</span>
-          </div>
-          <div>
-            <p className="text-[14px] font-medium">Messages</p>
-            <p className="text-[11px] text-neutral-500">Conversations with other users</p>
-          </div>
+      <div className="h-12 px-4 md:px-4 pl-14 md:pl-4 flex items-center justify-between border-b border-neutral-800 bg-neutral-900 shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[16px]">@</span>
+          <span className="text-[14px] font-semibold">Direct Messages</span>
+          <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
         </div>
         <StartNegotiation onSuccess={fetchUsers} />
       </div>
 
-      <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Thread list */}
-        <div className="w-72 border-r border-neutral-900 overflow-y-auto shrink-0">
-          <div className="p-3">
-            {threads.length === 0 && usersWithoutThreads.length === 0 ? (
-              <div className="text-center py-8 px-4">
-                <p className="text-[14px] font-medium mb-2">No conversations yet</p>
-                <p className="text-[12px] text-neutral-500">
-                  Start a negotiation to begin a conversation.
-                </p>
-              </div>
+      <div className="flex-1 flex min-h-0">
+        {/* DM list */}
+        <div className="w-60 border-r border-neutral-800 bg-neutral-900 overflow-y-auto shrink-0">
+          <div className="p-2">
+            <p className="px-2 py-1.5 text-[11px] text-neutral-500 uppercase tracking-wider font-semibold">
+              Direct Messages
+            </p>
+            {threads.length === 0 ? (
+              <p className="px-2 py-4 text-[12px] text-neutral-600 text-center">
+                No conversations yet
+              </p>
             ) : (
-              <>
-                {threads.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-[11px] text-neutral-500 uppercase tracking-wider px-2 mb-2">
-                      Active Conversations
-                    </p>
-                    <div className="space-y-1">
-                      {threads.map(thread => {
-                        const lastNeg = thread.negotiations[thread.negotiations.length - 1];
-                        const statusColor = lastNeg?.status === 'completed' 
-                          ? 'bg-emerald-500' 
-                          : lastNeg?.status === 'failed' 
-                            ? 'bg-red-500' 
-                            : 'bg-amber-500';
-                        return (
-                          <button
-                            key={thread.otherUser.id}
-                            onClick={() => setSelectedUserId(thread.otherUser.id)}
-                            className={`w-full text-left px-3 py-3 rounded-lg transition-colors ${
-                              selectedUserId === thread.otherUser.id
-                                ? 'bg-neutral-900'
-                                : 'hover:bg-neutral-950'
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-lg bg-neutral-800 flex items-center justify-center text-[14px] font-medium shrink-0">
-                                {thread.otherUser.name.charAt(0)}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <p className="text-[13px] font-medium truncate">{thread.otherUser.name}</p>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${statusColor}`} />
-                                </div>
-                                <p className="text-[11px] text-neutral-500 truncate">
-                                  {thread.otherUser.daemonName} · {thread.negotiations.length} negotiation{thread.negotiations.length !== 1 ? 's' : ''}
-                                </p>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+              <div className="space-y-0.5">
+                {threads.map((thread) => {
+                  const hasActive = thread.negotiations.some(n => n.status === 'in_progress');
+                  const lastNeg = thread.negotiations[thread.negotiations.length - 1];
+                  return (
+                    <button
+                      key={thread.otherUser.id}
+                      onClick={() => setSelectedUserId(thread.otherUser.id)}
+                      className={`w-full text-left px-2 py-1.5 rounded flex items-center gap-2 transition-colors ${
+                        selectedUserId === thread.otherUser.id
+                          ? 'bg-neutral-700/50 text-white'
+                          : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200'
+                      }`}
+                    >
+                      <div className="relative">
+                        <div className="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center">
+                          <span className="text-[12px] font-medium">{thread.otherUser.name.charAt(0)}</span>
+                        </div>
+                        <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-neutral-900" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] truncate">{thread.otherUser.name}</p>
+                        <p className="text-[10px] text-neutral-600 truncate">
+                          {thread.otherUser.daemonName} · {thread.negotiations.length} thread{thread.negotiations.length !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                      {hasActive && (
+                        <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shrink-0" />
+                      )}
+                      {!hasActive && lastNeg?.status === 'completed' && (
+                        <span className="text-[9px] text-emerald-500 shrink-0">✓</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
-                {usersWithoutThreads.length > 0 && (
-                  <div>
-                    <p className="text-[11px] text-neutral-500 uppercase tracking-wider px-2 mb-2">
-                      Other Users
-                    </p>
-                    <div className="space-y-1">
-                      {usersWithoutThreads.map(user => (
-                        <button
-                          key={user.id}
-                          onClick={() => setSelectedUserId(user.id)}
-                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
-                            selectedUserId === user.id
-                              ? 'bg-neutral-900'
-                              : 'hover:bg-neutral-950'
-                          }`}
-                        >
-                          <div className="w-8 h-8 rounded-lg bg-neutral-900 flex items-center justify-center text-[12px] font-medium shrink-0">
-                            {user.name.charAt(0)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[12px] text-neutral-400 truncate">{user.name}</p>
-                            <p className="text-[10px] text-neutral-600 truncate">{user.daemonName}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
+            {usersWithoutThreads.length > 0 && (
+              <div className="mt-4">
+                <p className="px-2 py-1.5 text-[11px] text-neutral-500 uppercase tracking-wider font-semibold">
+                  Start Conversation
+                </p>
+                <div className="space-y-0.5">
+                  {usersWithoutThreads.map((user) => (
+                    <button
+                      key={user.id}
+                      onClick={() => setSelectedUserId(user.id)}
+                      className={`w-full text-left px-2 py-1.5 rounded flex items-center gap-2 transition-colors ${
+                        selectedUserId === user.id
+                          ? 'bg-neutral-700/50 text-white'
+                          : 'text-neutral-500 hover:bg-neutral-800/50 hover:text-neutral-300'
+                      }`}
+                    >
+                      <div className="w-6 h-6 rounded-full bg-neutral-800 flex items-center justify-center">
+                        <span className="text-[10px]">{user.name.charAt(0)}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] truncate">{user.name}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         </div>
 
-        {/* Conversation view */}
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        {/* Chat area */}
+        <div className="flex-1 flex flex-col min-h-0">
           {selectedThread ? (
             <>
-              {/* Thread header */}
-              <div className="h-14 px-6 flex items-center border-b border-neutral-900 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-neutral-800 flex items-center justify-center text-[14px] font-medium">
-                    {selectedThread.otherUser.name.charAt(0)}
+              {/* DM header */}
+              <div className="h-12 px-4 flex items-center gap-3 border-b border-neutral-800 shrink-0">
+                <div className="relative">
+                  <div className="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center">
+                    <span className="text-[12px] font-medium">{selectedThread.otherUser.name.charAt(0)}</span>
                   </div>
-                  <div>
-                    <p className="text-[14px] font-medium">{selectedThread.otherUser.name}</p>
-                    <p className="text-[11px] text-neutral-500">
-                      {selectedThread.otherUser.daemonName} represents them
-                    </p>
-                  </div>
+                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-neutral-950" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[14px] font-semibold truncate">{selectedThread.otherUser.name}</p>
+                  <p className="text-[11px] text-neutral-500">{selectedThread.otherUser.daemonName}</p>
                 </div>
               </div>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-6">
-                <div className="max-w-2xl mx-auto space-y-6">
-                  {selectedThread.negotiations.map(neg => (
-                    <div key={neg.id} className="space-y-4">
-                      {/* Negotiation header */}
-                      <div className="flex items-center gap-2 py-2">
-                        <div className="h-px flex-1 bg-neutral-900" />
-                        <span className="text-[11px] text-neutral-500 px-2">
-                          {neg.topic} · {new Date(neg.createdAt).toLocaleDateString()}
-                        </span>
-                        <div className="h-px flex-1 bg-neutral-900" />
-                      </div>
+              <div className="flex-1 overflow-y-auto">
+                {/* Profile banner */}
+                <div className="px-4 py-6 border-b border-neutral-800">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mb-3">
+                    <span className="text-[24px] font-bold text-white">{selectedThread.otherUser.name.charAt(0)}</span>
+                  </div>
+                  <h2 className="text-[20px] font-bold">{selectedThread.otherUser.name}</h2>
+                  <p className="text-[13px] text-neutral-400">
+                    This is the beginning of your conversation with {selectedThread.otherUser.name}.
+                    Their Pan ({selectedThread.otherUser.daemonName}) will negotiate on their behalf.
+                  </p>
+                </div>
 
-                      {/* Messages */}
-                      {neg.messages.map(msg => (
-                        <div
-                          key={msg.id}
-                          className={`flex ${msg.isFromMe ? 'justify-end' : 'justify-start'}`}
-                        >
-                          <div className={`max-w-[80%] ${msg.isFromMe ? 'items-end' : 'items-start'}`}>
-                            <p className="text-[11px] text-neutral-500 mb-1 px-1">
-                              {msg.fromPanName} → {msg.toPanName}
-                              <span className="ml-2 px-1.5 py-0.5 bg-neutral-900 rounded text-[10px]">
-                                {msg.intent}
-                              </span>
-                            </p>
-                            <div className={`px-4 py-3 rounded-2xl ${
-                              msg.isFromMe 
-                                ? 'bg-blue-600 text-white rounded-br-md' 
-                                : 'bg-neutral-900 text-neutral-200 rounded-bl-md'
+                {/* Negotiations as chat threads */}
+                <div className="pb-4">
+                  {selectedThread.negotiations.map((neg) => {
+                    const hasActiveTyping = neg.status === 'in_progress';
+                    
+                    return (
+                      <div key={neg.id} className="mb-4">
+                        {/* Thread divider */}
+                        <div className="flex items-center gap-3 px-4 py-2">
+                          <div className="h-px flex-1 bg-neutral-800" />
+                          <span className="text-[11px] text-neutral-500 px-2 py-0.5 bg-neutral-900 rounded">
+                            {neg.topic} · {formatDate(neg.createdAt)}
+                          </span>
+                          <div className="h-px flex-1 bg-neutral-800" />
+                        </div>
+
+                        {/* Messages */}
+                        {neg.messages.map((msg, idx) => {
+                          const prevMsg = neg.messages[idx - 1];
+                          const isFirstInGroup = !prevMsg || prevMsg.fromPanName !== msg.fromPanName;
+                          
+                          return (
+                            <ChatMessage
+                              key={msg.id}
+                              message={msg}
+                              showAvatar={isFirstInGroup}
+                              isFirstInGroup={isFirstInGroup}
+                              fromPanName={msg.fromPanName}
+                              isFromMe={msg.isFromMe}
+                            />
+                          );
+                        })}
+
+                        {/* Typing indicator */}
+                        {hasActiveTyping && (
+                          <TypingIndicator name={neg.theirDaemonName} />
+                        )}
+
+                        {/* Outcome */}
+                        {neg.outcome && (
+                          <div className="mx-4 mt-2 p-2 rounded border border-neutral-800 bg-neutral-900/50">
+                            <span className={`text-[11px] ${
+                              neg.status === 'completed' ? 'text-emerald-400' : 'text-red-400'
                             }`}>
-                              <p className="text-[13px] leading-relaxed">{msg.content}</p>
-                            </div>
+                              {neg.status === 'completed' ? '✓ ' : '✕ '}
+                              {neg.outcome}
+                            </span>
                           </div>
-                        </div>
-                      ))}
+                        )}
 
-                      {/* Outcome */}
-                      {neg.outcome && (
-                        <div className="flex justify-center">
-                          <div className={`px-4 py-2 rounded-lg text-[12px] ${
-                            neg.status === 'completed' 
-                              ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-900/50' 
-                              : 'bg-red-900/30 text-red-400 border border-red-900/50'
-                          }`}>
-                            {neg.status === 'completed' ? '✓' : '✕'} {neg.outcome}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                        {/* Shared context */}
+                        {neg.sharedContext && (
+                          <SharedContextDisplay
+                            sharedContext={neg.sharedContext}
+                            isInitiator={neg.isInitiator}
+                            theirName={selectedThread.otherUser.name}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div ref={messagesEndRef} />
                 </div>
               </div>
             </>
@@ -326,29 +490,20 @@ export default function MessagesPage() {
               if (!selectedUser) return null;
               return (
                 <>
-                  <div className="h-14 px-6 flex items-center border-b border-neutral-900 shrink-0">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-neutral-800 flex items-center justify-center text-[14px] font-medium">
-                        {selectedUser.name.charAt(0)}
-                      </div>
-                      <div>
-                        <p className="text-[14px] font-medium">{selectedUser.name}</p>
-                        <p className="text-[11px] text-neutral-500">
-                          {selectedUser.daemonName} represents them
-                        </p>
-                      </div>
+                  <div className="h-12 px-4 flex items-center gap-3 border-b border-neutral-800 shrink-0">
+                    <div className="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center">
+                      <span className="text-[12px] font-medium">{selectedUser.name.charAt(0)}</span>
                     </div>
+                    <p className="text-[14px] font-semibold">{selectedUser.name}</p>
                   </div>
                   <div className="flex-1 flex items-center justify-center">
-                    <div className="text-center">
-                      <div className="w-16 h-16 rounded-full bg-neutral-900 flex items-center justify-center mx-auto mb-4">
-                        <span className="text-2xl">{selectedUser.name.charAt(0)}</span>
+                    <div className="text-center px-4">
+                      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mx-auto mb-4">
+                        <span className="text-[32px] font-bold text-white">{selectedUser.name.charAt(0)}</span>
                       </div>
-                      <p className="text-[14px] text-neutral-400 mb-2">
-                        No conversations with {selectedUser.name} yet
-                      </p>
-                      <p className="text-[12px] text-neutral-600 mb-4">
-                        Start a negotiation to have your daemons coordinate
+                      <h2 className="text-[18px] font-bold mb-1">{selectedUser.name}</h2>
+                      <p className="text-[13px] text-neutral-400 mb-4">
+                        Start a sync to have your Pans coordinate
                       </p>
                       <StartNegotiation 
                         onSuccess={fetchUsers} 
@@ -362,9 +517,12 @@ export default function MessagesPage() {
           ) : (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
-                <p className="text-[14px] text-neutral-400 mb-2">Select a conversation</p>
-                <p className="text-[12px] text-neutral-600">
-                  or start a new negotiation with another user
+                <div className="w-16 h-16 rounded-full bg-neutral-800 flex items-center justify-center mx-auto mb-4">
+                  <span className="text-[28px] text-neutral-600">@</span>
+                </div>
+                <p className="text-[15px] text-neutral-400 mb-1">Select a conversation</p>
+                <p className="text-[13px] text-neutral-600">
+                  or start a new one from the sidebar
                 </p>
               </div>
             </div>
