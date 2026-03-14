@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAllRegisteredUsers } from '@/lib/users/user-service';
 import { getAllNegotiations, getUserNegotiations } from '@/lib/negotiations/store';
-import { runNegotiation } from '@/lib/negotiations/negotiate';
+import { runNegotiation, continueNegotiation } from '@/lib/negotiations/negotiate';
 
 export async function GET(request: Request) {
   // Only allow in development
@@ -100,6 +100,62 @@ export async function POST(request: Request) {
     console.error('[DEBUG] Negotiation failed:', error);
     return NextResponse.json(
       { error: 'Negotiation failed', details: String(error) },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const { negotiationId, userId, message } = body;
+    
+    if (!negotiationId || !userId || !message) {
+      return NextResponse.json({ error: 'negotiationId, userId, and message required' }, { status: 400 });
+    }
+    
+    const registeredUsers = getAllRegisteredUsers();
+    const user = registeredUsers.find(u => u.id === userId);
+    
+    if (!user) {
+      return NextResponse.json({ error: `User ${userId} not found` }, { status: 404 });
+    }
+    
+    console.log('[DEBUG] Continuing negotiation:', {
+      negotiationId,
+      user: { id: user.id, name: user.name, daemon: user.daemonName },
+      message,
+    });
+    
+    const result = await continueNegotiation({
+      negotiationId,
+      userId: user.id,
+      userName: user.name,
+      userPanName: user.daemonName,
+      message,
+    });
+    
+    console.log('[DEBUG] Continue completed:', {
+      id: result.id,
+      status: result.status,
+      messageCount: result.messages.length,
+    });
+    
+    return NextResponse.json({
+      success: true,
+      negotiation: {
+        id: result.id,
+        status: result.status,
+        initiator: result.initiator,
+        target: result.target,
+        messageCount: result.messages.length,
+        outcome: result.outcome,
+      },
+    });
+  } catch (error) {
+    console.error('[DEBUG] Continue failed:', error);
+    return NextResponse.json(
+      { error: 'Continue failed', details: String(error) },
       { status: 500 }
     );
   }

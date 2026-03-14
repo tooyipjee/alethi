@@ -1,7 +1,7 @@
 import { generateChat, type AIProvider, type AIMessage } from '@/lib/ai/providers';
 import { buildDaemonSystemPrompt, type DaemonConfig } from '@/lib/ai/daemon';
 import { getMockOtherUsers } from '@/lib/mock/work-context';
-import { saveNegotiation, type StoredNegotiation, type NegotiationMessage } from './store';
+import { saveNegotiation, addNegotiationMessage, updateNegotiation, getNegotiation, type StoredNegotiation, type NegotiationMessage, type SharedContext } from './store';
 import { logContextShare } from '@/lib/security/audit';
 import { findUserByName, buildUserTruthPacket } from '@/lib/users/user-service';
 import type { NegotiationIntent, TruthPacket } from '@/types/daemon';
@@ -214,6 +214,20 @@ export async function runNegotiation(params: NegotiateParams): Promise<StoredNeg
   const messages: NegotiationMessage[] = [];
   const now = new Date();
 
+  // Build shared context for transparency
+  const sharedContext: SharedContext = {
+    initiator: {
+      userId,
+      truthPacket: myTruth,
+      privacyLevel: 'balanced',
+    },
+    target: {
+      userId: target.id,
+      truthPacket: target.truthPacket,
+      privacyLevel: target.privacyLevel,
+    },
+  };
+
   const negotiation: StoredNegotiation = {
     id: negotiationId,
     topic,
@@ -221,17 +235,25 @@ export async function runNegotiation(params: NegotiateParams): Promise<StoredNeg
     initiator: { id: userId, name: userName, daemonName: userPanName },
     target: { id: target.id, name: target.name, daemonName: target.daemonName },
     messages,
+    sharedContext,
     createdAt: now,
     updatedAt: now,
   };
+
+  // Save negotiation immediately so it appears in UI for both users
+  saveNegotiation(negotiation);
+  console.log(`[NEGOTIATE] Saved initial negotiation, starting turns...`);
+
+  // Helper to get current messages from store (for generateTurn history)
+  const getCurrentMessages = () => getNegotiation(negotiationId)?.messages || [];
 
   // Turn 1: Your Pan opens
   const turn1 = await generateTurn(
     userPanName, 'supportive', provider, userId,
     target.daemonName, topic, myTruth, target.truthPacket,
-    messages, userMessage,
+    getCurrentMessages(), userMessage,
   );
-  messages.push({
+  const msg1: NegotiationMessage = {
     id: crypto.randomUUID(),
     fromUserId: userId,
     toUserId: target.id,
@@ -240,15 +262,17 @@ export async function runNegotiation(params: NegotiateParams): Promise<StoredNeg
     intent: turn1.intent,
     content: turn1.message,
     createdAt: new Date(),
-  });
+  };
+  addNegotiationMessage(negotiationId, msg1);
+  console.log(`[NEGOTIATE] Turn 1 complete: ${turn1.intent}`);
 
   // Turn 2: Their Pan responds
   const turn2 = await generateTurn(
     target.daemonName, target.daemonPersonality, provider, target.id,
     userPanName, topic, target.truthPacket, myTruth,
-    messages,
+    getCurrentMessages(),
   );
-  messages.push({
+  const msg2: NegotiationMessage = {
     id: crypto.randomUUID(),
     fromUserId: target.id,
     toUserId: userId,
@@ -257,16 +281,21 @@ export async function runNegotiation(params: NegotiateParams): Promise<StoredNeg
     intent: turn2.intent,
     content: turn2.message,
     createdAt: new Date(),
-  });
+  };
+  addNegotiationMessage(negotiationId, msg2);
+  console.log(`[NEGOTIATE] Turn 2 complete: ${turn2.intent}`);
+
+  let lastIntent = turn2.intent;
+  let lastContent = turn2.message;
 
   // Turn 3: Your Pan follows up (unless already accepted/declined)
   if (turn2.intent !== 'accept' && turn2.intent !== 'decline') {
     const turn3 = await generateTurn(
       userPanName, 'supportive', provider, userId,
       target.daemonName, topic, myTruth, target.truthPacket,
-      messages,
+      getCurrentMessages(),
     );
-    messages.push({
+    const msg3: NegotiationMessage = {
       id: crypto.randomUUID(),
       fromUserId: userId,
       toUserId: target.id,
@@ -275,16 +304,20 @@ export async function runNegotiation(params: NegotiateParams): Promise<StoredNeg
       intent: turn3.intent,
       content: turn3.message,
       createdAt: new Date(),
-    });
+    };
+    addNegotiationMessage(negotiationId, msg3);
+    console.log(`[NEGOTIATE] Turn 3 complete: ${turn3.intent}`);
+    lastIntent = turn3.intent;
+    lastContent = turn3.message;
 
     // Turn 4: Their Pan resolves
     if (turn3.intent !== 'accept' && turn3.intent !== 'decline') {
       const turn4 = await generateTurn(
         target.daemonName, target.daemonPersonality, provider, target.id,
         userPanName, topic, target.truthPacket, myTruth,
-        messages,
+        getCurrentMessages(),
       );
-      messages.push({
+      const msg4: NegotiationMessage = {
         id: crypto.randomUUID(),
         fromUserId: target.id,
         toUserId: userId,
@@ -293,23 +326,32 @@ export async function runNegotiation(params: NegotiateParams): Promise<StoredNeg
         intent: turn4.intent,
         content: turn4.message,
         createdAt: new Date(),
-      });
+      };
+      addNegotiationMessage(negotiationId, msg4);
+      console.log(`[NEGOTIATE] Turn 4 complete: ${turn4.intent}`);
+      lastIntent = turn4.intent;
+      lastContent = turn4.message;
     }
   }
 
-  // Determine outcome
-  const lastMsg = messages[messages.length - 1];
-  if (lastMsg.intent === 'accept') {
-    negotiation.status = 'completed';
-    negotiation.outcome = `Agreement reached: ${lastMsg.content}`;
-  } else if (lastMsg.intent === 'decline') {
-    negotiation.status = 'failed';
-    negotiation.outcome = `Declined: ${lastMsg.content}`;
+  // Determine outcome and update final status
+  let finalStatus: 'completed' | 'failed' = 'completed';
+  let outcome: string;
+  
+  if (lastIntent === 'accept') {
+    finalStatus = 'completed';
+    outcome = `Agreement reached: ${lastContent}`;
+  } else if (lastIntent === 'decline') {
+    finalStatus = 'failed';
+    outcome = `Declined: ${lastContent}`;
   } else {
-    negotiation.status = 'completed';
-    negotiation.outcome = 'Negotiation concluded';
+    finalStatus = 'completed';
+    outcome = 'Negotiation concluded';
   }
-  negotiation.updatedAt = new Date();
+
+  // Update the negotiation with final status
+  updateNegotiation(negotiationId, { status: finalStatus, outcome });
+  console.log(`[NEGOTIATE] Negotiation complete: ${finalStatus}`);
 
   // Audit: log what context was shared between Pans
   const sharedFields = Object.keys(myTruth).filter(k => {
@@ -322,6 +364,94 @@ export async function runNegotiation(params: NegotiateParams): Promise<StoredNeg
   logContextShare(userId, target.id, negotiationId, sharedFields, blockedFields);
   logContextShare(target.id, userId, negotiationId, Object.keys(target.truthPacket), []);
 
-  saveNegotiation(negotiation);
-  return negotiation;
+  // Return the final state of the negotiation
+  return getNegotiation(negotiationId) || negotiation;
+}
+
+interface ContinueParams {
+  negotiationId: string;
+  userId: string;
+  userName: string;
+  userPanName: string;
+  message: string;
+}
+
+export async function continueNegotiation(params: ContinueParams): Promise<StoredNegotiation> {
+  const { negotiationId, userId, userName, userPanName, message } = params;
+
+  const negotiation = getNegotiation(negotiationId);
+  if (!negotiation) {
+    throw new Error('Negotiation not found');
+  }
+
+  // Reopen the negotiation
+  updateNegotiation(negotiationId, { status: 'in_progress', outcome: undefined });
+
+  const provider = getProvider();
+  const myTruth = buildUserTruthPacket(userId, 'balanced');
+  
+  // Determine who is who in this negotiation
+  const isInitiator = negotiation.initiator.id === userId;
+  const myPanName = isInitiator ? negotiation.initiator.daemonName : negotiation.target.daemonName;
+  const otherPanName = isInitiator ? negotiation.target.daemonName : negotiation.initiator.daemonName;
+  const otherId = isInitiator ? negotiation.target.id : negotiation.initiator.id;
+  const otherTruth = negotiation.sharedContext 
+    ? (isInitiator ? negotiation.sharedContext.target.truthPacket : negotiation.sharedContext.initiator.truthPacket)
+    : myTruth;
+  const otherPersonality = 'supportive';
+
+  const getCurrentMessages = () => getNegotiation(negotiationId)?.messages || [];
+
+  // Turn 1: User's Pan sends the follow-up
+  const turn1 = await generateTurn(
+    myPanName, 'supportive', provider, userId,
+    otherPanName, `Follow-up: ${message}`, myTruth, otherTruth,
+    getCurrentMessages(), message,
+  );
+  const msg1: NegotiationMessage = {
+    id: crypto.randomUUID(),
+    fromUserId: userId,
+    toUserId: otherId,
+    fromPanName: myPanName,
+    toPanName: otherPanName,
+    intent: turn1.intent,
+    content: turn1.message,
+    createdAt: new Date(),
+  };
+  addNegotiationMessage(negotiationId, msg1);
+
+  // Turn 2: Other Pan responds
+  const turn2 = await generateTurn(
+    otherPanName, otherPersonality, provider, otherId,
+    myPanName, negotiation.topic, otherTruth, myTruth,
+    getCurrentMessages(),
+  );
+  const msg2: NegotiationMessage = {
+    id: crypto.randomUUID(),
+    fromUserId: otherId,
+    toUserId: userId,
+    fromPanName: otherPanName,
+    toPanName: myPanName,
+    intent: turn2.intent,
+    content: turn2.message,
+    createdAt: new Date(),
+  };
+  addNegotiationMessage(negotiationId, msg2);
+
+  // Determine new outcome
+  let finalStatus: 'completed' | 'failed' = 'completed';
+  let outcome: string;
+  
+  if (turn2.intent === 'accept') {
+    outcome = `Agreement reached: ${turn2.message}`;
+  } else if (turn2.intent === 'decline') {
+    finalStatus = 'failed';
+    outcome = `Declined: ${turn2.message}`;
+  } else {
+    outcome = 'Conversation continued';
+  }
+
+  updateNegotiation(negotiationId, { status: finalStatus, outcome });
+
+  return getNegotiation(negotiationId) || negotiation;
 }
