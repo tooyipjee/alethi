@@ -12,9 +12,27 @@ interface PanUser {
 }
 
 export default function SpectatorPage() {
-  const { negotiations, isConnected, reconnect } = useNegotiationsStream();
+  const { negotiations: streamNegotiations, isConnected, reconnect } = useNegotiationsStream();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [users, setUsers] = useState<PanUser[]>([]);
+  const [fallbackNegotiations, setFallbackNegotiations] = useState<typeof streamNegotiations>([]);
+
+  // Use stream negotiations if available, otherwise use fallback
+  const negotiations = streamNegotiations.length > 0 ? streamNegotiations : fallbackNegotiations;
+
+  const fetchNegotiations = useCallback(async () => {
+    try {
+      const res = await fetch('/api/negotiations');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.negotiations) {
+          setFallbackNegotiations(data.negotiations);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -30,7 +48,11 @@ export default function SpectatorPage() {
 
   useEffect(() => {
     fetchUsers();
-  }, [fetchUsers]);
+    fetchNegotiations();
+    // Poll every 5 seconds as backup
+    const interval = setInterval(fetchNegotiations, 5000);
+    return () => clearInterval(interval);
+  }, [fetchUsers, fetchNegotiations]);
 
   const selected = negotiations.find(n => n.id === selectedId);
 

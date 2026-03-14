@@ -37,9 +37,37 @@ interface ConversationThread {
 
 export default function MessagesPage() {
   const { data: session } = useSession();
-  const { negotiations } = useNegotiationsStream();
+  const { negotiations: streamNegotiations, isConnected } = useNegotiationsStream();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [users, setUsers] = useState<PanUser[]>([]);
+  const [fallbackNegotiations, setFallbackNegotiations] = useState<typeof streamNegotiations>([]);
+
+  // Use stream negotiations if available, otherwise use fallback
+  const negotiations = streamNegotiations.length > 0 ? streamNegotiations : fallbackNegotiations;
+
+  // Fallback: fetch negotiations directly if SSE doesn't work
+  const fetchNegotiations = useCallback(async () => {
+    try {
+      const res = await fetch('/api/negotiations');
+      if (res.ok) {
+        const data = await res.json();
+        console.log('[Messages] Fetched negotiations:', data.negotiations?.length || 0);
+        if (data.negotiations) {
+          setFallbackNegotiations(data.negotiations);
+        }
+      }
+    } catch (err) {
+      console.error('[Messages] Failed to fetch negotiations:', err);
+    }
+  }, []);
+
+  // Fetch on mount and when stream is disconnected
+  useEffect(() => {
+    fetchNegotiations();
+    // Also poll every 5 seconds as backup
+    const interval = setInterval(fetchNegotiations, 5000);
+    return () => clearInterval(interval);
+  }, [fetchNegotiations]);
 
   const fetchUsers = useCallback(async () => {
     try {

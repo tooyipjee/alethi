@@ -62,6 +62,7 @@ export function useNegotiationsStream(): UseNegotiationsStreamResult {
       es.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          console.log('[SSE Client] Received:', data.type, 'negotiations:', data.negotiations?.length || 0);
           if (data.type === 'init' || data.type === 'update') {
             setNegotiations(data.negotiations || []);
           }

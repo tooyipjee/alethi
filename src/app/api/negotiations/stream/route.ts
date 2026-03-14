@@ -47,10 +47,16 @@ export async function GET() {
   const session = await auth();
   
   if (!session?.user?.id) {
+    console.log('[SSE] No session, returning 401');
     return new Response('Unauthorized', { status: 401 });
   }
 
   const userId = session.user.id;
+  console.log(`[SSE] Connected: ${session.user.name} (${userId})`);
+  
+  const negotiations = getUserNegotiations(userId);
+  console.log(`[SSE] Initial negotiations for ${userId}:`, negotiations.length);
+  
   const encoder = new TextEncoder();
 
   let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
