@@ -114,7 +114,7 @@ export async function generateDaemonResponse({
   });
 }
 
-export function generateDailyBriefingPrompt(config: DaemonConfig, workContext?: WorkContext[]): AIMessage[] {
+export function generateDailyBriefingPrompt(config: DaemonConfig, _workContext?: WorkContext[]): AIMessage[] {
   return [
     {
       role: 'user',

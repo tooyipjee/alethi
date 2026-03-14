@@ -88,10 +88,11 @@ export async function fetchGitHubContext(token: string): Promise<GitHubContext> 
     Accept: 'application/vnd.github.v3+json',
   };
 
-  const [reposRes, eventsRes] = await Promise.all([
+  const [reposRes, _eventsRes] = await Promise.all([
     fetch('https://api.github.com/user/repos?sort=updated&per_page=10', { headers }),
     fetch('https://api.github.com/users/me/events?per_page=30', { headers }).catch(() => null),
   ]);
+  void _eventsRes; // Reserved for future event processing
 
   const repos = reposRes.ok ? await reposRes.json() : [];
   

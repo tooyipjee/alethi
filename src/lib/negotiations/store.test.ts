@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { NegotiationIntent } from '@/types/daemon';
 
 // Mock fs module

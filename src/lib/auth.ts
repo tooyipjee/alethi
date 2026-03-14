@@ -47,9 +47,6 @@ const TEST_USERS: Record<string, {
   },
 };
 
-// Legacy alias
-const TEST_USER = TEST_USERS['test@pan.local'];
-
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: isDatabaseAvailable() ? DrizzleAdapter(db) : undefined,
   session: { strategy: 'jwt' },

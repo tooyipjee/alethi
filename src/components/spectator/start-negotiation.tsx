@@ -113,7 +113,7 @@ export function StartNegotiation({ onSuccess, initialTarget }: StartNegotiationP
       <div className="relative bg-neutral-950 border border-neutral-800 rounded-xl w-full max-w-md p-6">
         <h2 className="text-[18px] font-semibold mb-1">Start a Sync</h2>
         <p className="text-[13px] text-neutral-500 mb-6">
-          Your Pan will sync with another user's Pan on your behalf.
+          Your Pan will sync with another user&apos;s Pan on your behalf.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { findUserByName, buildUserTruthPacket, getRegisteredUser } from '@/lib/users/user-service';
+import { findUserByName, buildUserTruthPacket } from '@/lib/users/user-service';
 import { getMockOtherUsers } from '@/lib/mock/work-context';
 import type { TruthPacket, PrivacyLevel } from '@/types/daemon';
 

@@ -160,14 +160,12 @@ export function PanChat({ panName, userName, userId }: PanChatProps) {
       if (!reader) throw new Error('No response stream');
 
       const decoder = new TextDecoder();
-      let fullContent = '';
       
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         const chunk = decoder.decode(value);
-        fullContent += chunk;
         setMessages(prev =>
           prev.map(m =>
             m.id === assistantId ? { ...m, content: m.content + chunk } : m
@@ -181,7 +179,7 @@ export function PanChat({ panName, userName, userId }: PanChatProps) {
           onClick: () => window.location.href = '/spectator',
         },
       });
-    } catch (error) {
+    } catch {
       setMessages(prev =>
         prev.map(m =>
           m.id === assistantId 

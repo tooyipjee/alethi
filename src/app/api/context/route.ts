@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getUserContexts, getConnectedSources } from '@/lib/integrations/context-store';
-import { buildWorkGraph, synthesizeTruthPacket } from '@/lib/mcp/work-graph';
+import { buildWorkGraph } from '@/lib/mcp/work-graph';
 
 export async function GET() {
   try {

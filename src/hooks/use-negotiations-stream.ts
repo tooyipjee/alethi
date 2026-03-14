@@ -97,12 +97,36 @@ export function useNegotiationsStream(): UseNegotiationsStreamResult {
         setIsConnected(false);
         es.close();
 
-        // Reconnect after 3 seconds
+        // Reconnect after 3 seconds - schedule via setTimeout, will call connect on next tick
         reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
+          // Close any stale connection and reconnect
+          if (eventSourceRef.current) {
+            eventSourceRef.current.close();
+            eventSourceRef.current = null;
+          }
+          const newEs = new EventSource('/api/negotiations/stream');
+          eventSourceRef.current = newEs;
+          newEs.onopen = () => {
+            setIsConnected(true);
+            setError(null);
+          };
+          newEs.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              if (data.type === 'init' || data.type === 'update') {
+                setNegotiations(data.negotiations || []);
+              }
+            } catch {
+              console.error('Failed to parse SSE data');
+            }
+          };
+          newEs.onerror = () => {
+            setIsConnected(false);
+            newEs.close();
+          };
         }, 3000);
       };
-    } catch (err) {
+    } catch {
       setError('Failed to connect');
       setIsConnected(false);
     }
@@ -112,7 +136,9 @@ export function useNegotiationsStream(): UseNegotiationsStreamResult {
     connect();
   }, [connect]);
 
+  // Initial connection setup - setState is called asynchronously in event handlers
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     connect();
 
     return () => {

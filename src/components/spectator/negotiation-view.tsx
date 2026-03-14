@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -58,7 +58,8 @@ const intentLabels: Record<string, string> = {
 };
 
 export function NegotiationView({ negotiation, currentUserId, onIntervene }: NegotiationViewProps) {
-  const [isLive, setIsLive] = useState(negotiation.status === 'in_progress');
+  const [isLive] = useState(negotiation.status === 'in_progress');
+  void isLive; // Used for future live updates
   
   const myDaemon = negotiation.isInitiator ? negotiation.initiator : negotiation.target;
   const otherDaemon = negotiation.isInitiator ? negotiation.target : negotiation.initiator;
@@ -125,7 +126,7 @@ export function NegotiationView({ negotiation, currentUserId, onIntervene }: Neg
 
         <ScrollArea className="h-[400px] p-4">
           <div className="space-y-4">
-            {negotiation.messages.map((message, index) => {
+            {negotiation.messages.map((message) => {
               const isFromMyDaemon = message.fromUserId === currentUserId;
               const speaker = isFromMyDaemon ? myDaemon : otherDaemon;
 

@@ -213,9 +213,11 @@ export default function MessagesPage() {
     }
   }, []);
 
+  // Initial fetch and polling - setState is called asynchronously after fetch completes
   useEffect(() => {
-    fetchNegotiations();
-    const interval = setInterval(fetchNegotiations, 5000);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchNegotiations();
+    const interval = setInterval(() => void fetchNegotiations(), 5000);
     return () => clearInterval(interval);
   }, [fetchNegotiations]);
 
@@ -229,8 +231,10 @@ export default function MessagesPage() {
     } catch { /* ignore */ }
   }, []);
 
+  // Initial user fetch - setState is called asynchronously after fetch completes
   useEffect(() => {
-    fetchUsers();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchUsers();
   }, [fetchUsers]);
 
   // Group negotiations by the other user
@@ -286,13 +290,14 @@ export default function MessagesPage() {
   threads.sort((a, b) => b.lastActivity.getTime() - a.lastActivity.getTime());
   const selectedThread = selectedUserId ? threadMap.get(selectedUserId) : null;
   const usersWithoutThreads = users.filter(u => !threadMap.has(u.id));
+  const selectedThreadMessagesCount = selectedThread?.negotiations.flatMap(n => n.messages).length ?? 0;
 
   // Auto-scroll to bottom
   useEffect(() => {
     if (selectedThread && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [selectedThread?.negotiations.flatMap(n => n.messages).length]);
+  }, [selectedThreadMessagesCount, selectedThread]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-neutral-950">

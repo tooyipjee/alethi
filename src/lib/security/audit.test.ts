@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { logContextShare, logSync, logTokenRefresh, getAuditLog, getAuditLogCount } from './audit';
 
 describe('audit logging', () => {

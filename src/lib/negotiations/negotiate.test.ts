@@ -66,7 +66,7 @@ vi.mock('@/lib/users/user-service', () => ({
 
 // Import the module under test AFTER mocking
 import { runNegotiation, continueNegotiation } from './negotiate';
-import { saveNegotiation, getNegotiation, addNegotiationMessage, updateNegotiation } from './store';
+import { saveNegotiation, addNegotiationMessage, updateNegotiation } from './store';
 import { generateChat } from '@/lib/ai/providers';
 import { logContextShare } from '@/lib/security/audit';
 
@@ -349,7 +349,7 @@ describe('negotiations/negotiate', () => {
     });
 
     it('alternates between initiator and target Pans', async () => {
-      const result = await runNegotiation({
+      await runNegotiation({
         userId: 'alex-id',
         userName: 'Alex Chen',
         userPanName: 'Nova',

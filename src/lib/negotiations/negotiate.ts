@@ -377,7 +377,7 @@ interface ContinueParams {
 }
 
 export async function continueNegotiation(params: ContinueParams): Promise<StoredNegotiation> {
-  const { negotiationId, userId, userName, userPanName, message } = params;
+  const { negotiationId, userId, message } = params;
 
   const negotiation = getNegotiation(negotiationId);
   if (!negotiation) {

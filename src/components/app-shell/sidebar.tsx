@@ -53,8 +53,9 @@ export function Sidebar({ user }: SidebarProps) {
     return () => clearInterval(interval);
   }, []);
 
-  // Close mobile menu on route change
+  // Close mobile menu on route change - intentional setState on external navigation event
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMobileOpen(false);
   }, [pathname]);
 

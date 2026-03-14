@@ -264,13 +264,14 @@ export default function SpectatorPage() {
   }, [fetchUsers, fetchNegotiations]);
 
   const selected = negotiations.find(n => n.id === selectedId);
+  const selectedMessagesLength = selected?.messages.length ?? 0;
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     if (selected && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [selected?.messages.length]);
+  }, [selectedMessagesLength, selected]);
 
   // Auto-select first negotiation if none selected
   useEffect(() => {
