@@ -84,9 +84,27 @@ export function useNegotiationsStream(): UseNegotiationsStreamResult {
       es.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log('[SSE Client] Received:', data.type, 'negotiations:', data.negotiations?.length || 0);
+          console.log('[SSE Client] Received:', data.type);
+          
           if (data.type === 'init' || data.type === 'update') {
+            // Full negotiation list update
             setNegotiations(data.negotiations || []);
+          } else if (data.type === 'message') {
+            // Per-message real-time update - append to existing negotiation
+            setNegotiations(prev => prev.map(neg => {
+              if (neg.id === data.negotiationId) {
+                // Check if message already exists (avoid duplicates)
+                const messageExists = neg.messages.some(m => m.id === data.message.id);
+                if (messageExists) return neg;
+                
+                return {
+                  ...neg,
+                  messages: [...neg.messages, data.message],
+                  updatedAt: new Date().toISOString(),
+                };
+              }
+              return neg;
+            }));
           }
         } catch {
           console.error('Failed to parse SSE data');
@@ -115,6 +133,19 @@ export function useNegotiationsStream(): UseNegotiationsStreamResult {
               const data = JSON.parse(event.data);
               if (data.type === 'init' || data.type === 'update') {
                 setNegotiations(data.negotiations || []);
+              } else if (data.type === 'message') {
+                setNegotiations(prev => prev.map(neg => {
+                  if (neg.id === data.negotiationId) {
+                    const messageExists = neg.messages.some(m => m.id === data.message.id);
+                    if (messageExists) return neg;
+                    return {
+                      ...neg,
+                      messages: [...neg.messages, data.message],
+                      updatedAt: new Date().toISOString(),
+                    };
+                  }
+                  return neg;
+                }));
               }
             } catch {
               console.error('Failed to parse SSE data');

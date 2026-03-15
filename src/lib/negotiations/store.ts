@@ -81,9 +81,13 @@ function saveToDisk(negotiations: Map<string, StoredNegotiation>) {
 // In-memory store for negotiations (loaded from disk on startup)
 const negotiations = loadFromDisk();
 
-// Listeners for real-time updates
+// Listeners for real-time updates (full negotiation refresh)
 type UpdateListener = (userIds: string[]) => void;
 const listeners: UpdateListener[] = [];
+
+// Listeners for individual message events (real-time per-message updates)
+type MessageListener = (negotiationId: string, message: NegotiationMessage, userIds: string[]) => void;
+const messageListeners: MessageListener[] = [];
 
 export function addUpdateListener(listener: UpdateListener) {
   listeners.push(listener);
@@ -93,12 +97,32 @@ export function addUpdateListener(listener: UpdateListener) {
   };
 }
 
+export function addMessageListener(listener: MessageListener) {
+  messageListeners.push(listener);
+  return () => {
+    const idx = messageListeners.indexOf(listener);
+    if (idx >= 0) messageListeners.splice(idx, 1);
+  };
+}
+
 function notifyUpdate(negotiation: StoredNegotiation) {
   const userIds = [negotiation.initiator.id, negotiation.target.id];
   console.log(`[STORE] Notifying users of update:`, userIds);
   for (const listener of listeners) {
     try {
       listener(userIds);
+    } catch {
+      // ignore listener errors
+    }
+  }
+}
+
+function notifyMessage(negotiationId: string, message: NegotiationMessage, negotiation: StoredNegotiation) {
+  const userIds = [negotiation.initiator.id, negotiation.target.id];
+  console.log(`[STORE] Notifying users of new message:`, { negotiationId, messageId: message.id, userIds });
+  for (const listener of messageListeners) {
+    try {
+      listener(negotiationId, message, userIds);
     } catch {
       // ignore listener errors
     }
@@ -133,6 +157,9 @@ export function addNegotiationMessage(id: string, message: NegotiationMessage) {
     existing.messages.push(message);
     existing.updatedAt = new Date();
     saveToDisk(negotiations);
+    // Notify with per-message event for real-time updates
+    notifyMessage(id, message, existing);
+    // Also notify full update for clients that prefer full refresh
     notifyUpdate(existing);
   }
 }

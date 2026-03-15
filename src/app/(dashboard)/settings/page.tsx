@@ -5,6 +5,7 @@ import { useSession, signIn } from 'next-auth/react';
 import { toast } from 'sonner';
 
 const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+const isDev = process.env.NODE_ENV !== 'production';
 
 interface SyncStatus {
   googleConnected: boolean;
@@ -31,6 +32,7 @@ export default function SettingsPage() {
   const { data: session, update } = useSession();
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [recentNegotiations, setRecentNegotiations] = useState<RecentNegotiation[]>([]);
   const [settings, setSettings] = useState({
@@ -106,6 +108,36 @@ export default function SettingsPage() {
     }
   };
 
+  const handleResetDemo = async () => {
+    if (!confirm('This will clear all syncs and conversations. Continue?')) {
+      return;
+    }
+    
+    setIsResetting(true);
+    try {
+      const res = await fetch('/api/demo/reset', { method: 'POST' });
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.error || 'Reset failed');
+        return;
+      }
+
+      toast.success(data.message || 'Demo state reset');
+      // Refresh negotiations list
+      fetchRecentNegotiations();
+      // Clear localStorage
+      if (typeof window !== 'undefined') {
+        const keys = Object.keys(localStorage).filter(k => k.startsWith('pan-chat-'));
+        keys.forEach(k => localStorage.removeItem(k));
+      }
+    } catch {
+      toast.error('Reset failed');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="h-14 px-6 md:px-6 pl-16 md:pl-6 flex items-center border-b border-neutral-900 bg-black shrink-0">
@@ -169,6 +201,13 @@ export default function SettingsPage() {
                         Mock tasks
                       </span>
                     </div>
+                    <button
+                      onClick={handleResetDemo}
+                      disabled={isResetting}
+                      className="mt-4 w-full py-2 px-3 bg-amber-900/30 hover:bg-amber-900/50 border border-amber-800/50 rounded-lg text-[12px] text-amber-200 transition-colors disabled:opacity-50"
+                    >
+                      {isResetting ? 'Resetting...' : 'Reset Demo State'}
+                    </button>
                   </div>
                 ) : (
                   <>
@@ -436,6 +475,24 @@ export default function SettingsPage() {
                 </div>
               </div>
             </Section>
+
+            {/* Developer Tools - only show in dev mode */}
+            {isDev && !isDemoMode && (
+              <Section title="Developer Tools">
+                <div className="space-y-3">
+                  <p className="text-[12px] text-neutral-500">
+                    These tools are only available in development mode.
+                  </p>
+                  <button
+                    onClick={handleResetDemo}
+                    disabled={isResetting}
+                    className="w-full py-2.5 px-4 bg-red-950/30 hover:bg-red-950/50 border border-red-900/50 rounded-lg text-[13px] text-red-300 transition-colors disabled:opacity-50"
+                  >
+                    {isResetting ? 'Resetting...' : 'Reset All Syncs & Conversations'}
+                  </button>
+                </div>
+              </Section>
+            )}
 
             <button
               onClick={handleSave}

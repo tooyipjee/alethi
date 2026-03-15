@@ -104,25 +104,36 @@ export async function POST(request: Request) {
           userMessage: lastMessage,
         });
 
-        // Build a summary of what happened
+        // Build a conversational summary of what happened
         const otherPan = result.target.daemonName;
-        const lines = [
-          `**I talked to ${result.target.name}'s Pan (${otherPan}).** Here's what happened:\n`,
-          '---\n',
-        ];
-
-        for (const msg of result.messages) {
-          const label = msg.fromUserId === userId ? daemonName : msg.fromPanName;
-          lines.push(`**${label}** _(${msg.intent})_: ${msg.content}\n`);
+        const otherName = result.target.name;
+        
+        // Get the last substantive message from the other Pan (their response)
+        const otherPanMessages = result.messages.filter(m => m.fromUserId !== userId);
+        const lastOtherMessage = otherPanMessages[otherPanMessages.length - 1];
+        
+        // Build a natural, conversational summary
+        let summary: string;
+        
+        if (result.status === 'completed' && result.outcome) {
+          // Successful coordination - focus on the outcome
+          if (lastOtherMessage) {
+            summary = `I talked to ${otherName}'s ${otherPan}. ${lastOtherMessage.content}\n\n**Result:** ${result.outcome}`;
+          } else {
+            summary = `I coordinated with ${otherName}'s ${otherPan}. ${result.outcome}`;
+          }
+        } else if (result.status === 'failed') {
+          summary = `I tried to reach ${otherName}'s ${otherPan}, but we couldn't come to an agreement. ${result.outcome || 'You might want to reach out directly.'}`;
+        } else {
+          // In progress or other - just report what happened
+          if (lastOtherMessage) {
+            summary = `I talked to ${otherName}'s ${otherPan}. Here's what they said:\n\n"${lastOtherMessage.content}"`;
+          } else {
+            summary = `I reached out to ${otherName}'s ${otherPan}. The conversation is ongoing.`;
+          }
         }
-
-        lines.push('\n---\n');
-        if (result.outcome) {
-          lines.push(`**Outcome:** ${result.outcome}\n`);
-        }
-        lines.push(`\nYou can also see this in **Pan Channels** in the sidebar.`);
-
-        const summary = lines.join('\n');
+        
+        summary += `\n\n◎ [View full conversation in Pan Syncs](/spectator)`;
 
         // Stream the summary as a plain text response
         const encoder = new TextEncoder();

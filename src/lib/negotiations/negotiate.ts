@@ -4,9 +4,10 @@ import { getMockOtherUsers } from '@/lib/mock/work-context';
 import { saveNegotiation, addNegotiationMessage, updateNegotiation, getNegotiation, type StoredNegotiation, type NegotiationMessage, type SharedContext } from './store';
 import { logContextShare } from '@/lib/security/audit';
 import { findUserByName, buildUserTruthPacket } from '@/lib/users/user-service';
+import { getCurrentState, getValidIntents, isValidTransition, hasReachedCounterLimit } from './state-machine';
 import type { NegotiationIntent, TruthPacket } from '@/types/daemon';
 
-const NEGOTIATION_PROMPT = `You are participating in a Pan-to-Pan negotiation on behalf of your human.
+const NEGOTIATION_PROMPT = `You are participating in a Pan-to-Pan sync on behalf of your human.
 Your goal is to represent your human's interests while being collaborative.
 
 ## Rules
@@ -14,16 +15,17 @@ Your goal is to represent your human's interests while being collaborative.
 - Focus on finding a solution that works for both parties
 - Use only the context provided (TruthPacket) — never invent information
 - Respond with valid JSON only, no markdown fences
+- CRITICAL: Stay focused on the specific topic of this sync. Do not introduce unrelated topics.
 
 ## Response Format (strict JSON)
 {"intent":"request|propose|accept|counter|decline","message":"Your message to the other Pan"}
 
 ## Intent Guide
-- request: Asking for something
-- propose: Making a specific offer
-- accept: Agreeing to a proposal
-- counter: Proposing an alternative
-- decline: Politely declining`;
+- request: Asking for something specific about the topic
+- propose: Making a specific offer related to the topic
+- accept: Agreeing to a proposal (use this to conclude successfully)
+- counter: Proposing an alternative approach to the same topic
+- decline: Politely declining (use sparingly, only if truly unable to help)`;
 
 interface NegotiateParams {
   userId: string;
@@ -38,6 +40,34 @@ function getProvider(): AIProvider {
   if (process.env.OPENAI_API_KEY) return 'openai';
   if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
   return 'ollama';
+}
+
+// Extract meaningful keywords from a topic for validation
+function extractTopicKeywords(topic: string): string[] {
+  const stopWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'dare', 'ought', 'used', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just', 'and', 'but', 'if', 'or', 'because', 'until', 'while', 'about', 'what', 'which', 'who', 'whom', 'this', 'that', 'these', 'those', 'am', 'be', 'been', 'being', 'get', 'got', 'ask', 'tell', 'talk', 'speak', 'reach', 'out', 'message', 'contact', 'check', 'find', 'her', 'his', 'him', 'she', 'he', 'they', 'them', 'their', 'its', 'my', 'your', 'our', 'me', 'you', 'us', 'pan', 'daemon', 'pans']);
+  
+  return topic
+    .toLowerCase()
+    .replace(/[^\w\s]/g, '')
+    .split(/\s+/)
+    .filter(word => word.length > 2 && !stopWords.has(word));
+}
+
+// Check if a response is on-topic
+function isResponseOnTopic(response: string, topic: string): boolean {
+  const keywords = extractTopicKeywords(topic);
+  if (keywords.length === 0) return true; // Can't validate without keywords
+  
+  const responseLower = response.toLowerCase();
+  
+  // Check if at least one topic keyword appears in the response
+  const hasTopicKeyword = keywords.some(kw => responseLower.includes(kw));
+  
+  // Also accept if the response is a simple accept/decline
+  const isSimpleResponse = responseLower.length < 100 || 
+    /\b(yes|no|okay|sure|agreed|accept|decline|sounds good|works for me|can do|will do)\b/i.test(responseLower);
+  
+  return hasTopicKeyword || isSimpleResponse;
 }
 
 function parseResponse(text: string): { intent: NegotiationIntent; message: string } {
@@ -93,20 +123,41 @@ async function generateTurn(
     ? history.map(m => `${m.fromPanName}: [${m.intent}] ${m.content}`).join('\n')
     : '(no messages yet)';
 
+  // Extract topic keywords for enforcement
+  const topicKeywords = topic.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+  const topicEnforcement = `IMPORTANT: This sync is ONLY about "${topic}". Stay strictly focused on this topic. Do not mention unrelated meetings, tasks, or topics.`;
+
+  // Get valid intents based on current state
+  const currentState = getCurrentState(history);
+  const validIntents = getValidIntents(currentState);
+  const reachedCounterLimit = hasReachedCounterLimit(history);
+  
+  const intentGuidance = reachedCounterLimit
+    ? `You MUST use intent "accept" or "decline" to conclude this sync. No more counter-proposals allowed.`
+    : `Valid intents for this turn: ${validIntents.join(', ')}. Choose the most appropriate one.`;
+
   const userPrompt = initialRequest
-    ? `Start a negotiation. Your human wants: "${initialRequest}"
+    ? `Start a sync. Your human wants: "${initialRequest}"
+
+${topicEnforcement}
+
+${intentGuidance}
 
 Topic: ${topic}
-Negotiating with: ${otherPanName}
+Syncing with: ${otherPanName}
 
 Your human's context: ${JSON.stringify(myTruth)}
 Other Pan's shared context: ${JSON.stringify(otherTruth)}
 
-Respond with JSON only.`
-    : `Continue the negotiation. Respond to the last message.
+Respond with JSON only. Keep your response focused on "${topic}".`
+    : `Continue the sync. Respond to the last message about "${topic}".
+
+${topicEnforcement}
+
+${intentGuidance}
 
 Topic: ${topic}
-Negotiating with: ${otherPanName}
+Syncing with: ${otherPanName}
 
 Your human's context: ${JSON.stringify(myTruth)}
 Other Pan's shared context: ${JSON.stringify(otherTruth)}
@@ -114,13 +165,57 @@ Other Pan's shared context: ${JSON.stringify(otherTruth)}
 Conversation so far:
 ${historyText}
 
-Respond with JSON only.`;
+Respond with JSON only. Stay on topic: "${topic}".`;
+
+  void topicKeywords; // Reserved for future topic validation
 
   const systemPrompt = buildDaemonSystemPrompt(daemonConfig) + '\n\n' + NEGOTIATION_PROMPT;
   const messages: AIMessage[] = [{ role: 'user', content: userPrompt }];
 
-  const result = await generateChat({ provider, messages, systemPrompt, fast: true });
-  return parseResponse(result.text);
+  // Try up to 3 times if response is off-topic or has invalid intent
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const result = await generateChat({ provider, messages, systemPrompt, fast: true });
+    const parsed = parseResponse(result.text);
+    
+    // Validate intent transition
+    const intentValid = isValidTransition(currentState, parsed.intent) || 
+                        parsed.intent === 'accept' || 
+                        parsed.intent === 'decline';
+    
+    // Force accept/decline if counter limit reached
+    if (reachedCounterLimit && parsed.intent !== 'accept' && parsed.intent !== 'decline') {
+      console.log(`[NEGOTIATE] Counter limit reached, forcing accept (was: ${parsed.intent})`);
+      return { intent: 'accept', message: parsed.message };
+    }
+    
+    // Validate response is on-topic and intent is valid
+    if (isResponseOnTopic(parsed.message, topic) && intentValid) {
+      return parsed;
+    }
+    
+    console.log(`[NEGOTIATE] Invalid response (attempt ${attempt + 1}): off-topic=${!isResponseOnTopic(parsed.message, topic)}, invalid-intent=${!intentValid}`);
+    
+    // Add stronger guidance for retry
+    messages[0] = { 
+      role: 'user', 
+      content: userPrompt + `\n\nYOUR PREVIOUS RESPONSE WAS INVALID. You MUST:
+1. Respond about "${topic}" only
+2. Use one of these intents: ${validIntents.join(', ')}`
+    };
+  }
+
+  // If still invalid after retries, return with a forced valid intent
+  const finalResult = await generateChat({ provider, messages, systemPrompt, fast: true });
+  const finalParsed = parseResponse(finalResult.text);
+  
+  // Force a valid intent if needed
+  if (!isValidTransition(currentState, finalParsed.intent)) {
+    const fallbackIntent = validIntents.includes('accept') ? 'accept' : validIntents[0] || 'propose';
+    console.log(`[NEGOTIATE] Forcing valid intent: ${fallbackIntent} (was: ${finalParsed.intent})`);
+    return { intent: fallbackIntent, message: finalParsed.message };
+  }
+  
+  return finalParsed;
 }
 
 interface TargetUser {

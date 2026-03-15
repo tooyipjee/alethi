@@ -15,36 +15,35 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-const TEST_USERS: Record<string, {
-  id: string;
-  email: string;
-  name: string;
-  image: undefined;
-  daemonName: string;
-  daemonPersonality: string;
-  privacyLevel: string;
-  preferredProvider: string;
-}> = {
-  'test@pan.local': {
-    id: 'test-user-1',
-    email: 'test@pan.local',
-    name: 'Alex Chen',
-    image: undefined,
-    daemonName: 'Nova',
-    daemonPersonality: 'supportive',
-    privacyLevel: 'balanced',
-    preferredProvider: 'ollama',
-  },
-  'demo@pan.local': {
-    id: 'test-user-2',
-    email: 'demo@pan.local',
-    name: 'Sarah Kim',
-    image: undefined,
-    daemonName: 'Luna',
-    daemonPersonality: 'analytical',
-    privacyLevel: 'balanced',
-    preferredProvider: 'ollama',
-  },
+const alexUser = {
+  id: 'test-user-1',
+  email: 'alex@pan.local',
+  name: 'Alex Chen',
+  image: undefined,
+  daemonName: 'Nova',
+  daemonPersonality: 'supportive',
+  privacyLevel: 'balanced',
+  preferredProvider: 'ollama',
+};
+
+const sarahUser = {
+  id: 'test-user-2',
+  email: 'sarah@pan.local',
+  name: 'Sarah Kim',
+  image: undefined,
+  daemonName: 'Luna',
+  daemonPersonality: 'analytical',
+  privacyLevel: 'balanced',
+  preferredProvider: 'ollama',
+};
+
+const TEST_USERS: Record<string, typeof alexUser> = {
+  // Primary emails
+  'alex@pan.local': alexUser,
+  'sarah@pan.local': sarahUser,
+  // Legacy aliases for backwards compatibility
+  'test@pan.local': alexUser,
+  'demo@pan.local': sarahUser,
 };
 
 export const { handlers, auth, signIn, signOut } = NextAuth({

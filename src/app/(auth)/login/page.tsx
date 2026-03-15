@@ -74,21 +74,23 @@ export default function LoginPage() {
 
           {/* Demo mode quick logins */}
           <div className="space-y-2 mb-6">
-            <p className="text-[11px] text-neutral-500 text-center mb-3">Demo accounts (use two browsers to test Pan-to-Pan)</p>
+            <p className="text-[11px] text-neutral-500 text-center mb-3">Demo accounts (use two browsers to test Pan-to-Pan syncs)</p>
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => handleTestLogin('test@pan.local')}
+                onClick={() => handleTestLogin('alex@pan.local')}
                 disabled={isLoading}
-                className="h-12 bg-emerald-600 text-white rounded-lg font-semibold text-[13px] hover:bg-emerald-500 transition-colors disabled:opacity-50"
+                className="h-12 bg-emerald-600 text-white rounded-lg font-semibold text-[13px] hover:bg-emerald-500 transition-colors disabled:opacity-50 flex flex-col items-center justify-center"
               >
-                Alex (Pan)
+                <span>Alex Chen</span>
+                <span className="text-[10px] opacity-75">Pan: Nova</span>
               </button>
               <button
-                onClick={() => handleTestLogin('demo@pan.local')}
+                onClick={() => handleTestLogin('sarah@pan.local')}
                 disabled={isLoading}
-                className="h-12 bg-blue-600 text-white rounded-lg font-semibold text-[13px] hover:bg-blue-500 transition-colors disabled:opacity-50"
+                className="h-12 bg-blue-600 text-white rounded-lg font-semibold text-[13px] hover:bg-blue-500 transition-colors disabled:opacity-50 flex flex-col items-center justify-center"
               >
-                Sarah (Luna)
+                <span>Sarah Kim</span>
+                <span className="text-[10px] opacity-75">Pan: Luna</span>
               </button>
             </div>
           </div>

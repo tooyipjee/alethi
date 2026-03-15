@@ -17,6 +17,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   isNegotiation?: boolean;
+  isSyncing?: boolean;
   error?: boolean;
 }
 
@@ -130,14 +131,17 @@ export function PanChat({ panName, userName, userId }: PanChatProps) {
 
     setIsNegotiating(true);
     const assistantId = crypto.randomUUID();
+    const targetPanName = pendingNegotiation.preview.target.daemonName;
+    const targetName = pendingNegotiation.preview.target.name;
 
     try {
-      // Add placeholder for response
+      // Add placeholder showing we're actively talking to the other Pan
       setMessages(prev => [...prev, { 
         id: assistantId, 
         role: 'assistant', 
-        content: '',
+        content: `Talking to ${targetName}'s ${targetPanName}...`,
         isNegotiation: true,
+        isSyncing: true,
       }]);
 
       // Call the chat API which will run the negotiation
@@ -160,6 +164,7 @@ export function PanChat({ panName, userName, userId }: PanChatProps) {
       if (!reader) throw new Error('No response stream');
 
       const decoder = new TextDecoder();
+      let isFirstChunk = true;
       
       while (true) {
         const { done, value } = await reader.read();
@@ -167,9 +172,17 @@ export function PanChat({ panName, userName, userId }: PanChatProps) {
 
         const chunk = decoder.decode(value);
         setMessages(prev =>
-          prev.map(m =>
-            m.id === assistantId ? { ...m, content: m.content + chunk } : m
-          )
+          prev.map(m => {
+            if (m.id === assistantId) {
+              // On first chunk, replace the "Talking to..." message
+              if (isFirstChunk) {
+                isFirstChunk = false;
+                return { ...m, content: chunk, isSyncing: false };
+              }
+              return { ...m, content: m.content + chunk };
+            }
+            return m;
+          })
         );
       }
 
@@ -386,9 +399,15 @@ export function PanChat({ panName, userName, userId }: PanChatProps) {
                         {m.role === 'user' ? 'You' : panName}
                       </p>
                       <div className={`text-[14px] leading-relaxed whitespace-pre-wrap break-words ${
-                        m.error ? 'text-red-400' : 'text-neutral-300'
+                        m.error ? 'text-red-400' : m.isSyncing ? 'text-emerald-400' : 'text-neutral-300'
                       }`}>
-                        {m.content}
+                        {m.isSyncing && (
+                          <span className="inline-flex items-center gap-2">
+                            <span className="inline-block w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                            {m.content}
+                          </span>
+                        )}
+                        {!m.isSyncing && m.content}
                       </div>
                       {m.error && retryMessage && (
                         <button

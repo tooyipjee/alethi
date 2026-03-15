@@ -1,16 +1,17 @@
 import { auth } from '@/lib/auth';
-import { getUserNegotiations, addUpdateListener } from '@/lib/negotiations/store';
+import { getUserNegotiations, addUpdateListener, addMessageListener, type NegotiationMessage } from '@/lib/negotiations/store';
 
 // Track connected clients per user
 const clients = new Map<string, Set<ReadableStreamDefaultController<Uint8Array>>>();
 
-// Set up store listener once
+// Set up store listeners once
 let listenerRegistered = false;
 
 function setupListener() {
   if (listenerRegistered) return;
   listenerRegistered = true;
 
+  // Listen for full negotiation updates
   addUpdateListener((userIds) => {
     const encoder = new TextEncoder();
     for (const userId of userIds) {
@@ -23,6 +24,36 @@ function setupListener() {
             ...n,
             isInitiator: n.initiator.id === userId,
           })),
+        });
+        
+        const toRemove: ReadableStreamDefaultController<Uint8Array>[] = [];
+        for (const controller of controllers) {
+          try {
+            controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+          } catch {
+            toRemove.push(controller);
+          }
+        }
+        for (const c of toRemove) {
+          controllers.delete(c);
+        }
+      }
+    }
+  });
+
+  // Listen for individual message events (real-time per-message updates)
+  addMessageListener((negotiationId: string, message: NegotiationMessage, userIds: string[]) => {
+    const encoder = new TextEncoder();
+    for (const userId of userIds) {
+      const controllers = clients.get(userId);
+      if (controllers) {
+        const data = JSON.stringify({
+          type: 'message',
+          negotiationId,
+          message: {
+            ...message,
+            createdAt: message.createdAt.toISOString(),
+          },
         });
         
         const toRemove: ReadableStreamDefaultController<Uint8Array>[] = [];
