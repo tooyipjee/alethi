@@ -86,16 +86,9 @@ function ChatMessage({
 }) {
   const isInitiator = message.fromPanName === negotiation.initiator.daemonName;
   const ownerName = isInitiator ? negotiation.initiator.name : negotiation.target.name;
+  const daemonName = isInitiator ? negotiation.initiator.daemonName : negotiation.target.daemonName;
   const avatarColor = isInitiator ? 'bg-blue-600' : 'bg-purple-600';
-  const initial = message.fromPanName.charAt(0).toUpperCase();
-
-  const intentColors: Record<string, string> = {
-    accept: 'text-emerald-400',
-    decline: 'text-red-400',
-    propose: 'text-blue-400',
-    counter: 'text-amber-400',
-    request: 'text-neutral-400',
-  };
+  const initial = ownerName.charAt(0).toUpperCase();
 
   return (
     <div className={`flex gap-3 px-4 hover:bg-neutral-900/30 ${isFirstInGroup ? 'pt-3' : 'pt-0.5'}`}>
@@ -109,15 +102,12 @@ function ChatMessage({
       <div className="flex-1 min-w-0">
         {isFirstInGroup && (
           <div className="flex items-baseline gap-2 mb-0.5">
-            <span className="text-[14px] font-semibold text-white">{message.fromPanName}</span>
-            <span className="text-[11px] text-neutral-500">{ownerName}&apos;s Pan</span>
+            <span className="text-[14px] font-semibold text-white">{ownerName}</span>
+            <span className="text-[11px] text-neutral-500">{daemonName}</span>
             <span className="text-[11px] text-neutral-600">{formatTime(message.createdAt)}</span>
           </div>
         )}
         <div className="text-[14px] text-neutral-200 leading-relaxed">
-          <span className={`text-[11px] ${intentColors[message.intent] || 'text-neutral-400'} mr-1.5`}>
-            [{message.intent}]
-          </span>
           {message.content}
         </div>
       </div>
@@ -285,8 +275,8 @@ export default function SpectatorPage() {
       {/* Header */}
       <div className="h-12 px-4 md:px-4 pl-14 md:pl-4 flex items-center justify-between border-b border-neutral-800 bg-neutral-900 shrink-0">
         <div className="flex items-center gap-2">
-          <span className="text-[16px]">#</span>
-          <span className="text-[14px] font-semibold">pan-syncs</span>
+          <span className="text-[16px]">@</span>
+          <span className="text-[14px] font-semibold">Conversations</span>
           <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
         </div>
         <div className="flex items-center gap-2">
@@ -307,11 +297,11 @@ export default function SpectatorPage() {
         <div className="w-60 border-r border-neutral-800 bg-neutral-900 overflow-y-auto shrink-0">
           <div className="p-2">
             <p className="px-2 py-1.5 text-[11px] text-neutral-500 uppercase tracking-wider font-semibold">
-              Active Syncs
+              Recent
             </p>
             {negotiations.length === 0 ? (
               <p className="px-2 py-4 text-[12px] text-neutral-600 text-center">
-                No active syncs
+                No conversations yet
               </p>
             ) : (
               <div className="space-y-0.5">
@@ -327,9 +317,11 @@ export default function SpectatorPage() {
                           : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200'
                       }`}
                     >
-                      <span className="text-[14px] text-neutral-500">#</span>
+                      <div className="w-6 h-6 rounded-full bg-neutral-700 flex items-center justify-center shrink-0">
+                        <span className="text-[10px]">{n.target.name.charAt(0)}</span>
+                      </div>
                       <span className="text-[13px] truncate flex-1">
-                        {n.initiator.daemonName.toLowerCase()}-{n.target.daemonName.toLowerCase()}
+                        {n.target.name}
                       </span>
                       {isActive && (
                         <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
@@ -365,10 +357,7 @@ export default function SpectatorPage() {
                         </div>
                         <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-neutral-900" />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[12px] text-neutral-300 truncate">{user.name}</p>
-                        <p className="text-[10px] text-neutral-600 truncate">{user.daemonName}</p>
-                      </div>
+                      <p className="text-[12px] text-neutral-300 truncate">{user.name}</p>
                     </div>
                   ))}
                 </div>
@@ -383,10 +372,15 @@ export default function SpectatorPage() {
             <>
               {/* Channel header */}
               <div className="h-12 px-4 flex items-center gap-3 border-b border-neutral-800 shrink-0">
-                <span className="text-[18px] text-neutral-500">#</span>
+                <div className="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center">
+                  <span className="text-[12px] font-medium">{selected.target.name.charAt(0)}</span>
+                </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[14px] font-semibold truncate">
-                    {selected.initiator.daemonName} ↔ {selected.target.daemonName}
+                    {selected.target.name}
+                  </p>
+                  <p className="text-[11px] text-neutral-500 truncate">
+                    {selected.topic}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -406,20 +400,17 @@ export default function SpectatorPage() {
                 <div className="px-4 py-6 border-b border-neutral-800">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                      <span className="text-[20px]">#</span>
+                      <span className="text-[18px] font-bold text-white">{selected.target.name.charAt(0)}</span>
                     </div>
                     <div>
                       <h2 className="text-[20px] font-bold">
-                        {selected.initiator.daemonName} ↔ {selected.target.daemonName}
+                        {selected.target.name}
                       </h2>
                       <p className="text-[13px] text-neutral-400">
-                        {selected.initiator.name}&apos;s Pan syncing with {selected.target.name}&apos;s Pan
+                        {selected.topic}
                       </p>
                     </div>
                   </div>
-                  <p className="text-[14px] text-neutral-300 mt-3">
-                    <span className="text-neutral-500">Topic:</span> {selected.topic}
-                  </p>
                   <p className="text-[12px] text-neutral-500 mt-1">
                     Started {formatDate(selected.createdAt)} at {formatTime(selected.createdAt)}
                   </p>
@@ -444,7 +435,7 @@ export default function SpectatorPage() {
 
                   {/* Typing indicator when in progress */}
                   {selected.status === 'in_progress' && (
-                    <TypingIndicator names={[selected.initiator.daemonName, selected.target.daemonName]} />
+                    <TypingIndicator names={[selected.initiator.name, selected.target.name]} />
                   )}
 
                   {/* Outcome */}
@@ -481,7 +472,7 @@ export default function SpectatorPage() {
                     type="text"
                     value={followUpInput}
                     onChange={(e) => setFollowUpInput(e.target.value)}
-                    placeholder={`Continue the conversation between ${selected.initiator.daemonName} and ${selected.target.daemonName}...`}
+                    placeholder={`Continue the conversation with ${selected.target.name}...`}
                     className="flex-1 bg-neutral-900 border border-neutral-700 rounded-lg px-4 py-2.5 text-[14px] text-white placeholder:text-neutral-500 focus:outline-none focus:border-neutral-500"
                     disabled={isSending}
                   />
@@ -494,7 +485,7 @@ export default function SpectatorPage() {
                   </button>
                 </form>
                 <p className="text-[11px] text-neutral-600 mt-2">
-                  Your prompt will continue the Pan-to-Pan sync
+                  Continue the conversation
                 </p>
               </div>
             </>
@@ -502,11 +493,11 @@ export default function SpectatorPage() {
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <div className="w-16 h-16 rounded-full bg-neutral-800 flex items-center justify-center mx-auto mb-4">
-                  <span className="text-[28px] text-neutral-600">#</span>
+                  <span className="text-[28px] text-neutral-600">@</span>
                 </div>
-                <p className="text-[15px] text-neutral-400 mb-1">Select a sync</p>
+                <p className="text-[15px] text-neutral-400 mb-1">Select a conversation</p>
                 <p className="text-[13px] text-neutral-600">
-                  or start a new one to watch Pans collaborate
+                  or start a new one from the sidebar
                 </p>
               </div>
             </div>

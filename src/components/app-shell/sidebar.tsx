@@ -92,19 +92,12 @@ export function Sidebar({ user }: SidebarProps) {
             Conversations
           </p>
           <NavItem 
-            href="/messages" 
-            active={pathname === '/messages'} 
-            icon="💬"
-            badge={negotiationCount > 0 ? negotiationCount : undefined}
-          >
-            Messages
-          </NavItem>
-          <NavItem 
             href="/spectator" 
             active={pathname === '/spectator'} 
-            icon="◎"
+            icon="@"
+            badge={negotiationCount > 0 ? negotiationCount : undefined}
           >
-            Pan Syncs
+            All Chats
           </NavItem>
         </div>
 

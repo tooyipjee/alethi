@@ -77,14 +77,14 @@ export function ConsentDialog({ preview, onApprove, onCancel, isLoading }: Conse
             </div>
             <div>
               <h2 className="text-[16px] font-semibold">Approve sharing</h2>
-              <p className="text-[12px] text-neutral-500">Review before {preview.initiator.daemonName} negotiates</p>
+              <p className="text-[12px] text-neutral-500">Review what you&apos;ll share with {preview.target.name}</p>
             </div>
           </div>
 
           <div className="p-4 bg-neutral-900/50 rounded-xl mb-4">
             <p className="text-[13px] text-neutral-300 leading-relaxed">
-              <span className="text-white font-medium">{preview.initiator.daemonName}</span> wants to negotiate with{' '}
-              <span className="text-white font-medium">{preview.target.name}&apos;s {preview.target.daemonName}</span>{' '}
+              Your <span className="text-white font-medium">{preview.initiator.daemonName}</span> will chat with{' '}
+              <span className="text-white font-medium">{preview.target.name}</span>{' '}
               about:
             </p>
             <p className="text-[14px] text-white font-medium mt-2">

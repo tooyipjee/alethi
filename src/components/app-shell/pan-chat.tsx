@@ -131,7 +131,6 @@ export function PanChat({ panName, userName, userId }: PanChatProps) {
 
     setIsNegotiating(true);
     const assistantId = crypto.randomUUID();
-    const targetPanName = pendingNegotiation.preview.target.daemonName;
     const targetName = pendingNegotiation.preview.target.name;
 
     try {
@@ -139,7 +138,7 @@ export function PanChat({ panName, userName, userId }: PanChatProps) {
       setMessages(prev => [...prev, { 
         id: assistantId, 
         role: 'assistant', 
-        content: `Talking to ${targetName}'s ${targetPanName}...`,
+        content: `Talking to ${targetName}...`,
         isNegotiation: true,
         isSyncing: true,
       }]);
@@ -186,7 +185,7 @@ export function PanChat({ panName, userName, userId }: PanChatProps) {
         );
       }
 
-      toast.success('Sync complete! Check Pan Syncs to see the full conversation.', {
+      toast.success('Done! Check Conversations to see the full chat.', {
         action: {
           label: 'View',
           onClick: () => window.location.href = '/spectator',
@@ -316,7 +315,7 @@ export function PanChat({ panName, userName, userId }: PanChatProps) {
     setMessages(prev => [...prev, {
       id: crypto.randomUUID(),
       role: 'assistant',
-      content: `Okay, I won't contact ${pendingNegotiation?.preview.target.name}'s ${pendingNegotiation?.preview.target.daemonName}. Let me know if you change your mind.`,
+      content: `Okay, I won't contact ${pendingNegotiation?.preview.target.name}. Let me know if you change your mind.`,
     }]);
     setPendingNegotiation(null);
   }, [pendingNegotiation]);
@@ -422,7 +421,7 @@ export function PanChat({ panName, userName, userId }: PanChatProps) {
                           href="/spectator"
                           className="inline-flex items-center gap-1 mt-3 text-[12px] text-emerald-500 hover:text-emerald-400 transition-colors"
                         >
-                          <span>◎</span> View in Pan Channels →
+                          View full conversation →
                         </Link>
                       )}
                     </div>

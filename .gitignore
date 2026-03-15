@@ -40,3 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .cache
+
+# screenshots and test artifacts
+*.png
+demo-screenshots/
+playwright-report/
+test-results/
