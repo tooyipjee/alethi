@@ -7,8 +7,17 @@ import { db, isDatabaseAvailable } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { storeTokens } from '@/lib/integrations/token-store';
 import { registerUser } from '@/lib/users/user-service';
+
+// Dynamic import to avoid loading crypto in Edge Runtime (middleware)
+async function storeTokensAsync(userId: string, tokens: { 
+  googleAccessToken?: string; 
+  googleRefreshToken?: string; 
+  googleTokenExpiry?: number;
+}) {
+  const { storeTokens } = await import('@/lib/integrations/token-store');
+  storeTokens(userId, tokens);
+}
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -124,7 +133,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         
         // Store in memory so server-side APIs can access them
         if (token.id) {
-          storeTokens(token.id as string, {
+          // Use async import to avoid loading crypto in Edge Runtime
+          void storeTokensAsync(token.id as string, {
             googleAccessToken: account.access_token ?? undefined,
             googleRefreshToken: account.refresh_token ?? undefined,
             googleTokenExpiry: account.expires_at ? account.expires_at * 1000 : undefined,
