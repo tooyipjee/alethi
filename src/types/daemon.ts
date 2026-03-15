@@ -18,6 +18,7 @@ export interface TruthPacket {
   relevantExpertise: string[];
   currentFocus?: string;
   lastActiveProject?: string;
+  workItems?: string[]; // Actual work context summaries for richer negotiation
 }
 
 export interface DaemonMessage {

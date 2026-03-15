@@ -7,6 +7,7 @@ export interface WorkGraphNode {
   id: string;
   type: 'project' | 'task' | 'document' | 'event';
   title: string;
+  summary: string;
   source: string;
   priority: 'high' | 'medium' | 'low';
   status: 'active' | 'pending' | 'completed';
@@ -54,6 +55,7 @@ export function buildWorkGraph(contexts: WorkContext[]): WorkGraph {
       id: ctx.id,
       type,
       title: ctx.title,
+      summary: ctx.summary,
       source: ctx.source,
       priority,
       status,
@@ -187,12 +189,21 @@ export function synthesizeTruthPacket(
       .slice(0, 2)
       .map(n => n.title.split('/').pop() || n.title);
     basePacket.relevantExpertise = projects;
+    // Include brief work summaries even in minimal mode
+    basePacket.workItems = workGraph.nodes
+      .filter(n => n.type === 'task' || n.type === 'project')
+      .slice(0, 3)
+      .map(n => n.title);
   } else if (privacyLevel === 'balanced') {
     basePacket.relevantExpertise = workGraph.nodes
       .filter(n => n.type === 'project')
       .slice(0, 3)
       .map(n => n.title);
     basePacket.currentFocus = workGraph.topPriorities[0];
+    // Include actual work context summaries for richer negotiation
+    basePacket.workItems = workGraph.nodes
+      .slice(0, 5)
+      .map(n => `${n.title}: ${n.summary || ''}`);
   } else {
     basePacket.relevantExpertise = workGraph.nodes
       .filter(n => n.type === 'project')
@@ -200,6 +211,10 @@ export function synthesizeTruthPacket(
       .map(n => n.title);
     basePacket.currentFocus = workGraph.topPriorities[0];
     basePacket.lastActiveProject = workGraph.recentActivity[0];
+    // Include comprehensive work context for open privacy
+    basePacket.workItems = workGraph.nodes
+      .slice(0, 8)
+      .map(n => `${n.title}: ${n.summary || ''}`);
   }
 
   return basePacket;
